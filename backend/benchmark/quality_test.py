@@ -8,52 +8,67 @@ def run_quality_test():
     print("Loading embedding model (all-MiniLM-L6-v2) for Real Semantic Quality Test...")
     model = SentenceTransformer('all-MiniLM-L6-v2')
     
-    # 1. Dataset: A mix of distinct topics to clearly separate clusters
+    # --- Test Set 1: Disambiguation (Rigorous) ---
+    # Intentionally overlapping terms to test semantic understanding
+    # We test Polysemy (Words with multiple meanings: Python, Java)
     documents = [
-        # Topic: Space
-        "The sun is a star at the center of the solar system.",
-        "Mars is often called the Red Planet because of its reddish appearance.",
-        "Jupiter is the largest planet in our solar system.",
-        # Topic: Coding
-        "Python is a high-level, interpreted programming language known for readability.",
-        "Rust guarantees memory safety without garbage collection.",
-        "JavaScript is essential for web development and runs in the browser.",
-        # Topic: Food
-        "Sushi is a traditional Japanese dish of prepared vinegared rice.",
-        "Pizza originated in Italy and consists of a round, flat base.",
-        "Tacos are a traditional Mexican dish consisting of a corn or wheat tortilla.",
-        # Distractors / Noise
-        "The quick brown fox jumps over the lazy dog.",
-        "Lorem ipsum dolor sit amet.",
+        # 0-2: Python (Language)
+        "Python is a clean, interpreted language emphasizing readability.",
+        "Pip is the standard package manager for installing Python libraries.",
+        "Flask and Django are popular web frameworks for Python.",
+        
+        # 3-5: Python (Snake)
+        "Pythons are non-venomous constrictors found in Africa and Asia.",
+        "The ball python is a popular small snake pet.",
+        "Large pythons constrict their prey until respiration stops.",
+        
+        # 6-8: Java (Language)
+        "Java is a class-based, object-oriented language meant to have few dependencies.",
+        "The JVM allows Java code to run on any device.",
+        "Spring Boot makes it easy to create stand-alone Java applications.",
+        
+        # 9-11: Java (Coffee)
+        "Java is a colloquial term for coffee, originating from the island of Java.",
+        "Espresso is a concentrated coffee brewed with high pressure.",
+        "A latte consists of espresso and steamed milk.",
+        
+        # 12-14: JavaScript (Web)
+        "JavaScript runs in the browser to make webpages interactive.",
+        "Node.js allows developers to run JavaScript on the server.",
+        "React is a library for building user interfaces in JavaScript.",
     ]
     
-    # 2. Queries with Expected Answers (Ground Truth Indices)
+    # Query format: (Question, [List of Valid Indices], Label)
+    # We use lists of valid indices because sometimes query applies to multiple docs
     test_cases = [
-        ("What is the red planet?", 1), # Mars (Index 1)
-        ("Tell me about a programming language with memory safety.", 4), # Rust (Index 4)
-        ("Which planet is the biggest?", 2), # Jupiter (Index 2)
-        ("Italian food with a flat base", 7), # Pizza (Index 7)
-        ("Web coding language", 5), # JavaScript (Index 5)
+        ("How to install python packages?", [1], "Python Code"),
+        ("Dangerous snakes in Africa", [3, 5], "Python Animal"),
+        ("Web development with flask", [2], "Python Code"),
+        ("Brewing strong coffee", [10, 9], "Coffee"),
+        ("Object oriented programming with virtual machine", [6, 7], "Java Code"),
+        ("Code running in browser", [12], "JS Code"),
+        ("Pet snake", [4], "Python Animal"),
+        ("Backend javascript server", [13], "JS Code"), 
     ]
     
-    # Embed documents
     print(f"Generating embeddings for {len(documents)} documents...")
     embeddings = model.encode(documents).tolist()
     ids = [str(i) for i in range(len(documents))]
     metadatas = [{"text": doc} for doc in documents]
     
-    # 3. Define Runner
     def test_db(db_type: str):
-        print(f"\n--- Testing Retrieval Quality: {db_type.upper()} ---")
+        print(f"\n{'='*40}")
+        print(f"Testing Retrieval Quality: {db_type.upper()}")
+        print(f"{'='*40}")
+        
         db_path = f"quality_{db_type}.db"
         chroma_path = f"quality_chroma_{db_type}"
         
-        # Cleanup prior runs
+        # Cleanup
         if os.path.exists(db_path): os.remove(db_path)
         if os.path.exists(chroma_path): shutil.rmtree(chroma_path)
         
         try:
-            # Init Driver
             if db_type == "sqlite":
                 db = get_vector_db("sqlite", db_path=db_path)
             else:
@@ -62,47 +77,56 @@ def run_quality_test():
             db.initialize()
             db.add_chunks(embeddings, metadatas, ids)
             
-            # Run Queries
-            correct_top1 = 0
+            k = 3
+            hits_at_1 = 0
+            hits_at_3 = 0
             
-            print(f"{'QUERY':<50} | {'RESULT':<40} | {'SCORE':<5}")
+            print(f"{'QUERY':<50} | {'TOP 1 DOC':<30} | {'TOP 1?':<6} | {'ALL FOUND?':<10}")
             print("-" * 105)
 
-            for query_text, expected_index in test_cases:
+            for query_text, valid_indices, label in test_cases:
                 q_vec = model.encode(query_text).tolist()
-                results = db.search(q_vec, limit=1)
+                results = db.search(q_vec, limit=k)
                 
-                if not results:
-                    print(f"{query_text:<50} | (No Results)")
-                    continue
+                retrieved_ids = [int(r['id']) for r in results] if results else []
+                
+                # Metric 1: Is the absolute top result correct?
+                is_top1_good = False
+                if retrieved_ids and retrieved_ids[0] in valid_indices:
+                    is_top1_good = True
+                    hits_at_1 += 1
+                
+                # Metric 2: Rigorous Multi-hit check
+                # Did we find ALL expected documents within the top K?
+                # (For overlapping topics, providing just 1 answer when 2 exist is increasingly considered a "fail" in RAG)
+                found_valid_ids = set(retrieved_ids) & set(valid_indices)
+                is_perfect_recall = len(found_valid_ids) == len(valid_indices)
+                
+                if is_perfect_recall:
+                    hits_at_3 += 1
+
+                # Display Logic
+                if retrieved_ids:
+                    top_text = documents[retrieved_ids[0]]
+                    top_text_display = (top_text[:27] + "...") if len(top_text) > 27 else top_text
+                else:
+                    top_text_display = "None"
                     
-                top_result = results[0]
-                top_result_id = int(top_result['id'])
-                score = top_result['score']
-                retrieved_text = documents[top_result_id]
+                m1 = "✅" if is_top1_good else "❌"
+                m_perfect = "✅" if is_perfect_recall else f"⚠️ ({len(found_valid_ids)}/{len(valid_indices)})"
                 
-                # Truncate text for display
-                display_text = (retrieved_text[:37] + '...') if len(retrieved_text) > 37 else retrieved_text
-                
-                is_correct = top_result_id == expected_index
-                marker = "✅" if is_correct else "❌"
-                
-                print(f"{marker} {query_text:<48} | {display_text:<40} | {score:.4f}")
-                
-                if is_correct:
-                    correct_top1 += 1
-            
-            accuracy = (correct_top1 / len(test_cases)) * 100
+                print(f"{query_text:<50} | {top_text_display:<30} | {m1:<6} | {m_perfect:<10}")
+
             print("-" * 105)
-            print(f"Retrieval Accuracy: {accuracy:.0f}% ({correct_top1}/{len(test_cases)})")
+            print(f"Top-1 Accuracy: {(hits_at_1/len(test_cases))*100:.0f}% (First result is relevant)")
+            print(f"Perfect Recall: {(hits_at_3/len(test_cases))*100:.0f}% (Found ALL relevant docs in Top-3)")
+            
             db.close()
             
         finally:
-            # Cleanup
             if os.path.exists(db_path): os.remove(db_path)
             if os.path.exists(chroma_path): shutil.rmtree(chroma_path)
 
-    # 4. Execute Comparison
     test_db("sqlite")
     test_db("chroma")
 
