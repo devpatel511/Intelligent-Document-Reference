@@ -3,11 +3,13 @@ import os
 from typing import Optional, List, Dict
 from pathlib import Path
 
+
 class MetadataManager:
     """
     Handles all interactions with the relational metadata database (SQLite).
     This is separate from the Vector DB interactions.
     """
+
     def __init__(self, db_path: str = "local_search.db"):
         self.db_path = db_path
         self._init_db()
@@ -22,7 +24,7 @@ class MetadataManager:
         schema_path = Path(__file__).parent / "schema.sql"
         if not schema_path.exists():
             raise FileNotFoundError(f"Schema file not found at {schema_path}")
-            
+
         with open(schema_path, "r") as f:
             schema_sql = f.read()
 
@@ -33,7 +35,9 @@ class MetadataManager:
         finally:
             conn.close()
 
-    def register_file(self, path: str, file_hash: str, size: int, modified: float) -> int:
+    def register_file(
+        self, path: str, file_hash: str, size: int, modified: float
+    ) -> int:
         """
         Upsert a file record. Returns the file_id.
         """
@@ -43,24 +47,30 @@ class MetadataManager:
             # Check if exists
             cursor.execute("SELECT id, file_hash FROM files WHERE path = ?", (path,))
             row = cursor.fetchone()
-            
+
             if row:
-                file_id = row['id']
+                file_id = row["id"]
                 # If hash changed, update status
-                if row['file_hash'] != file_hash:
-                    cursor.execute("""
+                if row["file_hash"] != file_hash:
+                    cursor.execute(
+                        """
                         UPDATE files 
                         SET file_hash=?, size_bytes=?, last_modified_timestamp=?, status='outdated'
                         WHERE id=?
-                    """, (file_hash, size, modified, file_id))
+                    """,
+                        (file_hash, size, modified, file_id),
+                    )
             else:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO files (path, file_hash, size_bytes, last_modified_timestamp, status)
                     VALUES (?, ?, ?, ?, 'pending')
                     RETURNING id
-                """, (path, file_hash, size, modified))
+                """,
+                    (path, file_hash, size, modified),
+                )
                 file_id = cursor.fetchone()[0]
-            
+
             conn.commit()
             return file_id
         finally:
@@ -70,11 +80,14 @@ class MetadataManager:
         """Create a version record for a file ingestion run."""
         conn = self._get_conn()
         try:
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 INSERT INTO file_versions (file_id, version_hash)
                 VALUES (?, ?)
                 RETURNING id
-            """, (file_id, file_hash))
+            """,
+                (file_id, file_hash),
+            )
             version_id = cursor.fetchone()[0]
             conn.commit()
             return version_id
@@ -88,21 +101,24 @@ class MetadataManager:
         """
         conn = self._get_conn()
         try:
-            conn.executemany("""
+            conn.executemany(
+                """
                 INSERT INTO chunks (id, file_id, version_id, chunk_index, start_offset, end_offset, text_content)
                 VALUES (:id, :file_id, :version_id, :chunk_index, :start_offset, :end_offset, :text_content)
-            """, chunks_data)
+            """,
+                chunks_data,
+            )
             conn.commit()
         finally:
             conn.close()
-    
+
     def get_file_content(self, file_id: int) -> Optional[str]:
         # Minimal help utility
         conn = self._get_conn()
         cursor = conn.execute("SELECT path FROM files WHERE id = ?", (file_id,))
         res = cursor.fetchone()
         conn.close()
-        if res and os.path.exists(res['path']):
-            with open(res['path'], 'r', errors='ignore') as f:
+        if res and os.path.exists(res["path"]):
+            with open(res["path"], "r", errors="ignore") as f:
                 return f.read()
         return None

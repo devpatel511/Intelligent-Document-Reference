@@ -1,11 +1,9 @@
-<<<<<<< HEAD
 .venv/
 __pycache__/
 .pytest_cache/
 data/
 .env
 
-=======
 # macOS
 .DS_Store
 **/.DS_Store
@@ -15,8 +13,7 @@ __pycache__
 **/__pycache__/
 *.py[cod]
 .python-version
-.venv/
+
 
 # VSCode
 .vscode/
->>>>>>> 50c3e90 (Backend database setup code initial commit)

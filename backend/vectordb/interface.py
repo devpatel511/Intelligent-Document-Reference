@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
+
 class VectorDBProtocol(ABC):
     """
     Abstract Interface for Vector Database implementations.
@@ -14,13 +15,15 @@ class VectorDBProtocol(ABC):
         pass
 
     @abstractmethod
-    def add_chunks(self, 
-                   embeddings: List[List[float]], 
-                   metadata: List[Dict[str, Any]], 
-                   ids: List[str]) -> bool:
+    def add_chunks(
+        self,
+        embeddings: List[List[float]],
+        metadata: List[Dict[str, Any]],
+        ids: List[str],
+    ) -> bool:
         """
         Add vectors to the index.
-        
+
         Args:
             embeddings: List of float vectors.
             metadata: List of dicts containing link back to relational DB (e.g. {'chunk_id': 1}).
@@ -29,9 +32,7 @@ class VectorDBProtocol(ABC):
         pass
 
     @abstractmethod
-    def search(self, 
-               query_vector: List[float], 
-               limit: int = 5) -> List[Dict[str, Any]]:
+    def search(self, query_vector: List[float], limit: int = 5) -> List[Dict[str, Any]]:
         """
         Search for nearest neighbors.
 

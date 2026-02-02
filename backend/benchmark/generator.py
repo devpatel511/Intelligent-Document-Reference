@@ -1,6 +1,6 @@
-import random
 import uuid
 import numpy as np
+
 
 def generate_dummy_data(count=1000, dim=384):
     """
