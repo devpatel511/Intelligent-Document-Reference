@@ -5,7 +5,7 @@ import numpy as np
 from ..vectordb.factory import get_vector_db
 from .generator import generate_dummy_data
 
-def run_benchmark(db_type: str, count=2000):
+def run_benchmark(db_type: str, count=5000):
     print(f"--- Benchmarking {db_type.upper()} ---")
     
     # 1. Setup & Cleanup

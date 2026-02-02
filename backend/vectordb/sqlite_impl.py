@@ -1,6 +1,7 @@
 import sqlite3
 import sqlite_vec
 import struct
+import json
 from typing import List, Dict, Any
 from .interface import VectorDBProtocol
 
@@ -17,16 +18,7 @@ class SQLiteVectorDB(VectorDBProtocol):
         self.conn.enable_load_extension(False)
         
         # Create Virtual Vector Table
-        # We map the text-chunk ID (string UUID) to a rowid integer internally if needed,
-        # OR we can store the UUID in an auxiliary column if vec0 supports it, 
-        # BUT vec0 is strictly (rowid, embedding).
-        # SOLUTION: We created a 'chunks' table in the metadata DB. 
-        # Ideally, we should unify the rowid of 'chunks' and 'vec_chunks' if they are in the same DB.
-        # However, to keep this generic (matching the Chroma interface which uses string IDs),
-        # we will create a mapping table or use an auxiliary ID column if possible?
-        # Actually, for the cleanest generic impl independent of the other metadata tables:
-        # We will create a local mapping table:  id_map (rowid INTEGER PRIMARY KEY, external_id TEXT)
-        
+        # We only store embeddings here.
         self.conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
                 embedding float[{self.dim}]
@@ -34,16 +26,15 @@ class SQLiteVectorDB(VectorDBProtocol):
         """)
         
         # Mapping table to link integer ROWID (required by vec0) to string UUIDs (used by app)
+        # We can also store the metadata here as a JSON string since sqlite-vec is purely for vectors.
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS vec_id_map (
                 rowid INTEGER PRIMARY KEY,
-                external_id TEXT UNIQUE
+                external_id TEXT UNIQUE,
+                metadata_json TEXT
             )
         """)
         self.conn.commit()
-
-    def _serialize(self, vector: List[float]) -> bytes:
-        return struct.pack(f"{len(vector)}f", *vector)
 
     def add_chunks(self, 
                    embeddings: List[List[float]], 
@@ -56,14 +47,16 @@ class SQLiteVectorDB(VectorDBProtocol):
         try:
             for i, vector in enumerate(embeddings):
                 ext_id = ids[i]
+                meta_json = json.dumps(metadata[i]) if metadata and i < len(metadata) else "{}"
                 
                 # 1. Insert into mapping table to get a ROWID
-                cursor.execute("INSERT OR REPLACE INTO vec_id_map (external_id) VALUES (?)", (ext_id,))
+                # We store metadata here so we can retrieve it during search
+                cursor.execute("INSERT OR REPLACE INTO vec_id_map (external_id, metadata_json) VALUES (?, ?)", (ext_id, meta_json))
                 row_id = cursor.lastrowid
                 
                 # 2. Insert into vector table using that ROWID
-                # Must serialize to bytes (little-endian float32)
-                vec_blob = self._serialize(vector)
+                # Use the library's serialize_float32 instead of struct.pack
+                vec_blob = sqlite_vec.serialize_float32(vector)
                 
                 cursor.execute("INSERT INTO vec_items(rowid, embedding) VALUES (?, ?)", (row_id, vec_blob))
                 
@@ -84,7 +77,7 @@ class SQLiteVectorDB(VectorDBProtocol):
         cursor = self.conn.cursor()
         
         # We query the vector table first to satisfy the virtual table constraints strictly
-        query_blob = self._serialize(query_vector)
+        query_blob = sqlite_vec.serialize_float32(query_vector)
 
         # 1. Get top K rowids from vector table
         # note: vec0 requires 'k = ?' in the WHERE clause or LIMIT
@@ -102,12 +95,16 @@ class SQLiteVectorDB(VectorDBProtocol):
         # 2. Fetch the external IDs for those rowids
         results = []
         for rowid, dist in vec_rows:
-            res = cursor.execute("SELECT external_id FROM vec_id_map WHERE rowid = ?", (rowid,)).fetchone()
+            res = cursor.execute("SELECT external_id, metadata_json FROM vec_id_map WHERE rowid = ?", (rowid,)).fetchone()
             if res:
+                ext_id = res[0]
+                meta_json = res[1]
+                meta_dict = json.loads(meta_json) if meta_json else {}
+                
                 results.append({
-                    "id": res[0],
+                    "id": ext_id,
                     "score": 1.0 - dist,
-                    "metadata": {} 
+                    "metadata": meta_dict 
                 })
             
         return results
