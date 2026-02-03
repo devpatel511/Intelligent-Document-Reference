@@ -1,5 +1,3 @@
 sqlite-vec
-chromadb
 sentence-transformers
 numpy
-pytest

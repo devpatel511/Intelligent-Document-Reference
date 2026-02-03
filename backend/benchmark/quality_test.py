@@ -1,18 +1,16 @@
 import os
-import shutil
+
 from sentence_transformers import SentenceTransformer
-from backend.vectordb.factory import get_vector_db
+
+from backend.database import UnifiedDatabase
 
 
-def run_quality_test():
-    print(
-        "Loading embedding model (all-MiniLM-L6-v2) for Real Semantic Quality Test..."
-    )
+def run_quality_test() -> None:
+    """Run a qualitative semantic search test using real sentences."""
+    print("Loading embedding model (all-MiniLM-L6-v2) for Semantic Test...")
     model = SentenceTransformer("all-MiniLM-L6-v2")
 
     # --- Test Set 1: Disambiguation (Rigorous) ---
-    # Intentionally overlapping terms to test semantic understanding
-    # We test Polysemy (Words with multiple meanings: Python, Java)
     documents = [
         # 0-2: Python (Language)
         "Python is a clean, interpreted language emphasizing readability.",
@@ -37,7 +35,6 @@ def run_quality_test():
     ]
 
     # Query format: (Question, [List of Valid Indices], Label)
-    # We use lists of valid indices because sometimes query applies to multiple docs
     test_cases = [
         ("How to install python packages?", [1], "Python Code"),
         ("Dangerous snakes in Africa", [3, 5], "Python Animal"),
@@ -51,100 +48,71 @@ def run_quality_test():
 
     print(f"Generating embeddings for {len(documents)} documents...")
     embeddings = model.encode(documents).tolist()
-    ids = [str(i) for i in range(len(documents))]
-    metadatas = [{"text": doc} for doc in documents]
 
-    def test_db(db_type: str):
-        print(f"\n{'='*40}")
-        print(f"Testing Retrieval Quality: {db_type.upper()}")
-        print(f"{'='*40}")
+    # Map to UnifiedDB format
+    chunks = []
+    for i, doc in enumerate(documents):
+        # We use stringified index as UUID equivalent for verification
+        chunks.append({"id": str(i), "text_content": doc, "chunk_index": 0})
 
-        db_path = f"quality_{db_type}.db"
-        chroma_path = f"quality_chroma_{db_type}"
+    print(f"\n{'='*40}")
+    print("Testing Retrieval Quality: UnifiedSQLite")
+    print(f"{'='*40}")
 
-        # Cleanup
+    db_path = "quality_unified.db"
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+    try:
+        db = UnifiedDatabase(db_path)
+        file_id = db.register_file("quality.txt", "hash", 0, 0.0)
+        version_id = db.create_version(file_id, "v1")
+
+        db.add_document(file_id, version_id, chunks, embeddings)
+
+        k = 3
+        hit_1 = 0
+        hit_3 = 0
+
+        # Header
+        print(f"{'QUERY':<50} | {'TOP 1':<25} | {'1?':<3} | {'ALL?':<6}")
+        print("-" * 95)
+
+        for query, expected_idxs, label in test_cases:
+            q_vec = model.encode(query).tolist()
+            results = db.search(q_vec, limit=k)
+
+            # Retrieved IDs
+            found_ids = [int(r["chunk_id"]) for r in results] if results else []
+
+            # Metric 1: Top-1 Accuracy
+            top1_ok = False
+            if found_ids and found_ids[0] in expected_idxs:
+                top1_ok = True
+                hit_1 += 1
+
+            # Metric 2: Full Recall
+            found_valid = set(found_ids) & set(expected_idxs)
+            full_recall = len(found_valid) == len(expected_idxs)
+            if full_recall:
+                hit_3 += 1
+
+            # Display
+            top_txt = documents[found_ids[0]] if found_ids else "None"
+            top_display = (top_txt[:22] + "...") if len(top_txt) > 22 else top_txt
+
+            m1 = "✅" if top1_ok else "❌"
+            m3 = "✅" if full_recall else f"⚠️ {len(found_valid)}/{len(expected_idxs)}"
+
+            print(f"{query:<50} | {top_display:<25} | {m1:<3} | {m3:<6}")
+
+        print("-" * 95)
+        print(f"Top-1 Accuracy: {(hit_1/len(test_cases))*100:.0f}%")
+        print(f"Perfect Recall: {(hit_3/len(test_cases))*100:.0f}%")
+
+    finally:
         if os.path.exists(db_path):
             os.remove(db_path)
-        if os.path.exists(chroma_path):
-            shutil.rmtree(chroma_path)
-
-        try:
-            if db_type == "sqlite":
-                db = get_vector_db("sqlite", db_path=db_path)
-            else:
-                db = get_vector_db("chroma", persist_path=chroma_path)
-
-            db.initialize()
-            db.add_chunks(embeddings, metadatas, ids)
-
-            k = 3
-            hits_at_1 = 0
-            hits_at_3 = 0
-
-            print(
-                f"{'QUERY':<50} | {'TOP 1 DOC':<30} | {'TOP 1?':<6} | {'ALL FOUND?':<10}"
-            )
-            print("-" * 105)
-
-            for query_text, valid_indices, label in test_cases:
-                q_vec = model.encode(query_text).tolist()
-                results = db.search(q_vec, limit=k)
-
-                retrieved_ids = [int(r["id"]) for r in results] if results else []
-
-                # Metric 1: Is the absolute top result correct?
-                is_top1_good = False
-                if retrieved_ids and retrieved_ids[0] in valid_indices:
-                    is_top1_good = True
-                    hits_at_1 += 1
-
-                # Metric 2: Rigorous Multi-hit check
-                # Did we find ALL expected documents within the top K?
-                # (For overlapping topics, providing just 1 answer when 2 exist is increasingly considered a "fail" in RAG)
-                found_valid_ids = set(retrieved_ids) & set(valid_indices)
-                is_perfect_recall = len(found_valid_ids) == len(valid_indices)
-
-                if is_perfect_recall:
-                    hits_at_3 += 1
-
-                # Display Logic
-                if retrieved_ids:
-                    top_text = documents[retrieved_ids[0]]
-                    top_text_display = (
-                        (top_text[:27] + "...") if len(top_text) > 27 else top_text
-                    )
-                else:
-                    top_text_display = "None"
-
-                m1 = "✅" if is_top1_good else "❌"
-                m_perfect = (
-                    "✅"
-                    if is_perfect_recall
-                    else f"⚠️ ({len(found_valid_ids)}/{len(valid_indices)})"
-                )
-
-                print(
-                    f"{query_text:<50} | {top_text_display:<30} | {m1:<6} | {m_perfect:<10}"
-                )
-
-            print("-" * 105)
-            print(
-                f"Top-1 Accuracy: {(hits_at_1/len(test_cases))*100:.0f}% (First result is relevant)"
-            )
-            print(
-                f"Perfect Recall: {(hits_at_3/len(test_cases))*100:.0f}% (Found ALL relevant docs in Top-3)"
-            )
-
-            db.close()
-
-        finally:
-            if os.path.exists(db_path):
-                os.remove(db_path)
-            if os.path.exists(chroma_path):
-                shutil.rmtree(chroma_path)
-
-    test_db("sqlite")
-    test_db("chroma")
 
 
 if __name__ == "__main__":

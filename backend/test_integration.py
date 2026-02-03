@@ -1,48 +1,68 @@
-from backend.database.metadata import MetadataManager
-from backend.vectordb.factory import get_vector_db
+import os
 import uuid
 
+from backend.database import UnifiedDatabase
 
-def simple_test():
-    print("Initializing Metadata Store...")
-    meta_db = MetadataManager("test_metadata.db")
 
-    # Register a fake file
-    file_id = meta_db.register_file("docs/intro.txt", "hash123", 1024, 0.0)
-    print(f"Registered file with ID: {file_id}")
+def simple_test() -> None:
+    """Run a simple integration test for the UnifiedDatabase module.
 
-    # Create valid fake chunks for Metadata DB
+    This test:
+    1. Initializes the database.
+    2. Registers a file.
+    3. Adds a document chunk and its vector.
+    4. Searches for the vector and verifies the result.
+    """
+    db_path = "test_unified_integration.db"
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+    print(f"Initializing UnifiedDatabase at {db_path}...")
+    db = UnifiedDatabase(db_path)
+
+    # 1. Register File
+    print("Registering file...")
+    file_id = db.register_file("docs/intro.txt", "hash123", 1024, 0.0)
+    print(f"File ID: {file_id}")
+
+    # 2. Create Version
+    version_id = db.create_version(file_id, "v1_hash")
+
+    # 3. Add Document (Chunks + Vectors)
+    print("Adding chunks and vectors...")
     chunk_id = str(uuid.uuid4())
+
     chunks = [
         {
             "id": chunk_id,
-            "file_id": file_id,
-            "version_id": None,
             "chunk_index": 0,
             "start_offset": 0,
             "end_offset": 100,
             "text_content": "Hello world this is a test chunk.",
         }
     ]
-    meta_db.add_chunks(chunks)
-    print("Metadata chunk inserted.")
 
-    # Initialize Vector Store (SQLite)
-    print("\nInitializing SQLite Vector Store...")
-    vec_db = get_vector_db("sqlite", db_path="test_vectors.db")
-    vec_db.initialize()
-
-    # Create fake vector (384 dims)
+    # Fake vector (384 dims)
     fake_vec = [0.1] * 384
 
-    print("Inserting vector...")
-    vec_db.add_chunks([fake_vec], [{"meta": "data"}], [chunk_id])
+    db.add_document(file_id, version_id, chunks, [fake_vec])
+    print("Document inserted.")
 
+    # 4. Search
     print("Searching vector...")
-    results = vec_db.search(fake_vec, limit=1)
+    results = db.search(fake_vec, limit=1)
     print("Results:", results)
 
-    vec_db.close()
+    # Validate
+    assert len(results) == 1
+    # rowid might be 1.
+    assert results[0]["chunk_id"] == chunk_id
+    assert results[0]["text_content"] == "Hello world this is a test chunk."
+
+    print("Search verification passed.")
+
+    if os.path.exists(db_path):
+        os.remove(db_path)
     print("\nTest Complete.")
 
 

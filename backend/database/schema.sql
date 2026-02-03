@@ -25,10 +25,10 @@ CREATE TABLE IF NOT EXISTS file_versions (
 
 -- 3. Chunks Table
 -- Relational storage of text content. 
--- Note: 'embedding_id' is the link to the Vector DB (if using external like Chroma)
--- If using sqlite-vec, this ID might map 1:1 to the vec_chunks rowid.
+-- Changed to INTEGER PK to alias rowid for efficient mapping to vec_items
 CREATE TABLE IF NOT EXISTS chunks (
-    id TEXT PRIMARY KEY,        -- UUID strings are often easier for sync with ext vector DBs
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chunk_id TEXT UNIQUE,        -- UUID strings kept for external referencing
     file_id INTEGER NOT NULL,
     version_id INTEGER,         -- Link to specific version of file
     chunk_index INTEGER,
@@ -63,4 +63,11 @@ CREATE TABLE IF NOT EXISTS indexing_rules (
     pattern TEXT NOT NULL,      -- glob pattern e.g., "*.py", "**/node_modules/**"
     action TEXT NOT NULL,       -- 'include' or 'exclude'
     priority INTEGER DEFAULT 0
+);
+
+-- 6. Vector Table (sqlite-vec)
+-- rowid of this table will MATCH rowid (id) of 'chunks' table
+-- Assuming 384 dimensions (standard for all-MiniLM-L6-v2 etc.)
+CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
+    embedding float[384]
 );
