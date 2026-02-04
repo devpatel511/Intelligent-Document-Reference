@@ -1,0 +1,6 @@
+# Files/folders to watch and exclude
+watch:
+  - ./data/docs
+exclude:
+  - ./data/docs/tmp
+
