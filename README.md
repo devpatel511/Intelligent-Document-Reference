@@ -1,30 +1,4 @@
-# Local-first Intelligent Document Reference — Architecture Scaffold
-
-This repository is an architecture-only scaffold for a local-first RAG system.
-
-It contains packages, stub modules, and TODO markers for implementation tasks.
-
-Use this scaffold as the starting point for development, tests, and documentation.
-
-## Purpose
-
-- Provide a clear, testable, provider-agnostic architecture.
-
-- Make model switching first-class (local `ollama` vs API providers).
-
-- Keep wiring and lifecycle separate (`core/`).
-
-- Mirror the test structure to the application structure.
-
-## How to use
-
-1. Create a virtualenv and install dev deps (see `pyproject.toml`).
-
-2. Implement modules incrementally; follow TODOs in stubs.
-
-3. Use `core/bootstrap.py` to wire subsystems into `core/context.py`.
-
-4. Run tests under `tests/` as they are implemented.
+# Local-first Intelligent Document Reference — Architecture
 
 ## Final Directory Structure
 
@@ -123,8 +97,6 @@ Use this scaffold as the starting point for development, tests, and documentatio
     ├── integration/
     └── e2e/
 ```
-
-## Package Descriptions
 
 ### `config/`
 Configuration management: settings loading, model definitions, and path configurations.
