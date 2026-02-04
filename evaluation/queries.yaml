@@ -1,0 +1,5 @@
+# Placeholder evaluation queries
+- id: sample
+  query: "Find the contract for supplier X"
+  expected: []
+

@@ -1,0 +1,8 @@
+# Model provider definitions and default model ids
+embedding:
+  api: google-embedding-model-1
+  local: ollama-embed-model
+inference:
+  api: openai-gpt-4o
+  local: ollama-infer
+
