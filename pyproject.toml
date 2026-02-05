@@ -16,6 +16,7 @@ httpx = "^0.24.0"
 voyageai = "*"
 pillow = "*"
 numpy = "*"
+openai = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.3"

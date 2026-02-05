@@ -4,6 +4,10 @@ TODO: load YAML / environment variables and expose a Settings object.
 """
 from dataclasses import dataclass
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 @dataclass
 class Settings:
