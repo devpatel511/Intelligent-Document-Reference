@@ -12,6 +12,10 @@ typer = "^0.7.0"
 python-dotenv = "^1.0.0"
 watchdog = "^3.0.0"
 httpx = "^0.24.0"
+sqlite-vec = "^0.1.6"
+sentence-transformers = "^5.2.2"
+numpy = "^1.26.4"
+
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.3"
