@@ -3,6 +3,7 @@ import os
 from typing import List, Union, Optional
 import PIL.Image
 from dotenv import load_dotenv
+from config.settings import load_settings
 from .base import EmbeddingClient
 
 # Load environment variables from .env file
@@ -15,7 +16,7 @@ except ImportError:
 
 
 class VoyageEmbeddingClient(EmbeddingClient):
-    """Voyage AI client for text, image, and video embeddings."""
+    """Voyage AI client for text and image embeddings."""
     
     def __init__(self, api_key: Optional[str] = None, model: str = "voyage-multimodal-3.5"):
         """Initialize Voyage client.
@@ -42,6 +43,8 @@ class VoyageEmbeddingClient(EmbeddingClient):
         
         self.client = voyageai.Client(api_key=self.api_key)
         self.model = model
+        settings = load_settings()
+        self.embedding_dimension = settings.embedding_dimension
     
     def embed_text(self, texts: List[str]) -> List[List[float]]:
         """Embed text inputs.
@@ -88,32 +91,6 @@ class VoyageEmbeddingClient(EmbeddingClient):
         inputs = [[img] for img in pil_images]
         result = self.client.multimodal_embed(inputs, model=self.model)
         return result.embeddings
-    
-    def embed_video(self, videos: List[str]) -> List[List[float]]:
-        """Embed video inputs.
-        
-        Args:
-            videos: List of video file paths.
-        
-        Returns:
-            List of embedding vectors.
-        
-        Raises:
-            NotImplementedError: Video embedding is not yet implemented. Voyage may
-                not support video directly. This method may need to be implemented
-                based on Voyage's actual video support or may need to extract frames
-                and embed them as images.
-        """
-        if not videos:
-            return []
-        
-        # TODO: Implement video embedding based on Voyage API capabilities
-        # For now, this is a placeholder that would need to be adapted
-        # based on Voyage's actual video support
-        raise NotImplementedError(
-            "Video embedding not yet implemented. "
-            "Please check Voyage API documentation for video support."
-        )
     
     def embed_multimodal(
         self, 
