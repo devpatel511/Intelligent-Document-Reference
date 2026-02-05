@@ -3,6 +3,7 @@ name = "local-rag-architecture"
 version = "0.1.0"
 description = "Architecture scaffold for local-first RAG system"
 authors = ["team@example.com"]
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -12,8 +13,11 @@ typer = "^0.7.0"
 python-dotenv = "^1.0.0"
 watchdog = "^3.0.0"
 httpx = "^0.24.0"
+voyageai = "*"
+pillow = "*"
+numpy = "*"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^7.3"
 pytest-asyncio = "^0.21"
 black = "^24.3"
