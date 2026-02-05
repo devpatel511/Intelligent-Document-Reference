@@ -2,7 +2,7 @@ import os
 
 from sentence_transformers import SentenceTransformer
 
-from backend.database import UnifiedDatabase
+from db import UnifiedDatabase
 
 
 def run_quality_test() -> None:
