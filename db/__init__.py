@@ -1,2 +1,3 @@
-"""Database access layer stubs."""
+from .unified import UnifiedDatabase
 
+__all__ = ["UnifiedDatabase"]
