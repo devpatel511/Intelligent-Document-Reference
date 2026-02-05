@@ -36,7 +36,9 @@ interface ChatContextType {
   temperature: number;
   contextSize: number;
   indexedFiles: string[];
+  indexedDirectories: string[];
   excludedFiles: string[];
+  excludedDirectories: string[];
   exclusionPatterns: string[];
   isLoading: boolean;
   // General settings
@@ -54,12 +56,16 @@ interface ChatContextType {
   setContextSize: (size: number) => void;
   toggleIndexedFile: (path: string) => void;
   toggleExcludedFile: (path: string) => void;
+  addIndexedDirectory: (path: string) => void;
+  removeIndexedDirectory: (path: string) => void;
+  addExcludedDirectory: (path: string) => void;
+  removeExcludedDirectory: (path: string) => void;
   addExclusionPattern: (pattern: string) => void;
   removeExclusionPattern: (pattern: string) => void;
   setSystemPrompt: (prompt: string) => void;
   setDarkMode: (enabled: boolean) => void;
   setUserInfo: (info: string) => void;
-  uploadFolder: (folderPath: string, type: 'inclusion' | 'exclusion') => Promise<void>;
+  importFolder: (files: FileList, type: 'inclusion' | 'exclusion') => Promise<void>;
   saveFileIndexingConfig: (config: {
     inclusion?: { files?: string[]; directories?: string[] };
     exclusion?: { files?: string[]; directories?: string[]; patterns?: string[] };
@@ -88,7 +94,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [temperature, setTemperature] = useState<number>(0.7);
   const [contextSize, setContextSize] = useState<number>(4096);
   const [indexedFiles, setIndexedFiles] = useState<string[]>([]);
+  const [indexedDirectories, setIndexedDirectories] = useState<string[]>([]);
   const [excludedFiles, setExcludedFiles] = useState<string[]>([]);
+  const [excludedDirectories, setExcludedDirectories] = useState<string[]>([]);
   const [exclusionPatterns, setExclusionPatterns] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   // General settings
@@ -122,17 +130,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`${API_BASE_URL}/files/indexing`);
       const data = await response.json();
       if (data.inclusion) {
-        // Combine files and files from directories
-        const allIncluded: string[] = [];
         if (data.inclusion.files) {
-          allIncluded.push(...data.inclusion.files);
+          setIndexedFiles(data.inclusion.files);
         }
-        // TODO: Expand directories to individual files if needed
-        setIndexedFiles(allIncluded);
+        if (data.inclusion.directories) {
+          setIndexedDirectories(data.inclusion.directories);
+        }
       }
       if (data.exclusion) {
         if (data.exclusion.files) {
           setExcludedFiles(data.exclusion.files);
+        }
+        if (data.exclusion.directories) {
+          setExcludedDirectories(data.exclusion.directories);
         }
         if (data.exclusion.patterns) {
           setExclusionPatterns(data.exclusion.patterns);
@@ -265,19 +275,88 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setExclusionPatterns((prev) => prev.filter((p) => p !== pattern));
   };
 
-  const uploadFolder = async (folderPath: string, type: 'inclusion' | 'exclusion') => {
+  const importFolder = async (files: FileList, type: 'inclusion' | 'exclusion') => {
     try {
-      // TODO: Implement actual folder upload API call
-      // For now, just add to the appropriate list
+      if (files.length === 0) return;
+      
+      // Extract folder path from first file's webkitRelativePath
+      const firstFile = files[0] as File & { webkitRelativePath?: string };
+      if (!firstFile.webkitRelativePath) {
+        throw new Error('Folder selection not supported in this browser');
+      }
+      
+      const folderPath = firstFile.webkitRelativePath.split('/')[0];
+      const allFilePaths: string[] = [];
+      
+      // Extract all file paths from the folder
+      Array.from(files).forEach((file) => {
+        const fileWithPath = file as File & { webkitRelativePath?: string };
+        if (fileWithPath.webkitRelativePath) {
+          // Convert to relative path format
+          const relativePath = fileWithPath.webkitRelativePath;
+          allFilePaths.push(relativePath);
+        }
+      });
+      
       if (type === 'inclusion') {
-        setIndexedFiles((prev) => [...prev, folderPath]);
+        // Add folder to directories list
+        if (!indexedDirectories.includes(folderPath)) {
+          setIndexedDirectories((prev) => [...prev, folderPath]);
+        }
+        // Add all files to indexed files
+        setIndexedFiles((prev) => {
+          const newFiles = [...prev];
+          allFilePaths.forEach((path) => {
+            if (!newFiles.includes(path)) {
+              newFiles.push(path);
+            }
+          });
+          return newFiles;
+        });
       } else {
-        setExcludedFiles((prev) => [...prev, folderPath]);
+        // Add folder to excluded directories list
+        if (!excludedDirectories.includes(folderPath)) {
+          setExcludedDirectories((prev) => [...prev, folderPath]);
+        }
+        // Add all files to excluded files
+        setExcludedFiles((prev) => {
+          const newFiles = [...prev];
+          allFilePaths.forEach((path) => {
+            if (!newFiles.includes(path)) {
+              newFiles.push(path);
+            }
+          });
+          return newFiles;
+        });
       }
     } catch (error) {
-      console.error('Failed to upload folder:', error);
+      console.error('Failed to import folder:', error);
       throw error;
     }
+  };
+
+  const addIndexedDirectory = (path: string) => {
+    if (!indexedDirectories.includes(path)) {
+      setIndexedDirectories((prev) => [...prev, path]);
+    }
+  };
+
+  const removeIndexedDirectory = (path: string) => {
+    setIndexedDirectories((prev) => prev.filter((p) => p !== path));
+    // Also remove all files from that directory
+    setIndexedFiles((prev) => prev.filter((p) => !p.startsWith(path)));
+  };
+
+  const addExcludedDirectory = (path: string) => {
+    if (!excludedDirectories.includes(path)) {
+      setExcludedDirectories((prev) => [...prev, path]);
+    }
+  };
+
+  const removeExcludedDirectory = (path: string) => {
+    setExcludedDirectories((prev) => prev.filter((p) => p !== path));
+    // Also remove all files from that directory
+    setExcludedFiles((prev) => prev.filter((p) => !p.startsWith(path)));
   };
 
   return (
@@ -294,7 +373,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         temperature,
         contextSize,
         indexedFiles,
+        indexedDirectories,
         excludedFiles,
+        excludedDirectories,
         exclusionPatterns,
         isLoading,
         systemPrompt,
@@ -311,12 +392,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setContextSize,
         toggleIndexedFile,
         toggleExcludedFile,
+        addIndexedDirectory,
+        removeIndexedDirectory,
+        addExcludedDirectory,
+        removeExcludedDirectory,
         addExclusionPattern,
         removeExclusionPattern,
         setSystemPrompt,
         setDarkMode,
         setUserInfo,
-        uploadFolder,
+        importFolder,
         saveFileIndexingConfig,
         loadFiles,
       }}

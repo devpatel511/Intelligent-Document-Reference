@@ -70,15 +70,9 @@ def build_file_tree(path: str, base_path: str = "") -> Dict[str, Any]:
 @router.get("/")
 async def list_files():
     """List available files in a tree structure."""
-    # Default to current directory or a configured path
-    # In production, this should use a configured document path
-    base_path = os.getenv("DOCUMENT_PATH", ".")
-    
-    try:
-        files = build_file_tree(base_path, base_path)
-        return {"files": files}
-    except Exception as e:
-        return {"files": [], "error": str(e)}
+    # Return empty file tree by default - user must import folders
+    # This prevents auto-importing the project folder
+    return {"files": []}
 
 @router.get("/indexing")
 async def get_file_indexing_config():
@@ -91,9 +85,22 @@ async def update_file_indexing_config(update: FileIndexingUpdate):
     config = load_file_indexing_config()
     
     if update.inclusion is not None:
-        config["inclusion"] = update.inclusion
+        # Ensure we have the right structure
+        inclusion_data = {
+            "files": update.inclusion.get("files", []),
+            "directories": update.inclusion.get("directories", [])
+        }
+        config["inclusion"] = inclusion_data
+    
     if update.exclusion is not None:
-        config["exclusion"] = update.exclusion
+        # Ensure we have the right structure
+        exclusion_data = {
+            "files": update.exclusion.get("files", []),
+            "directories": update.exclusion.get("directories", []),
+            "patterns": update.exclusion.get("patterns", [])
+        }
+        config["exclusion"] = exclusion_data
+    
     if update.context is not None:
         # Filter out directories, only keep files
         context_files = update.context.get("files", [])

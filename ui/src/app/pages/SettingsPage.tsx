@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/ta
 import { RadioGroup, RadioGroupItem } from '@/app/components/ui/radio-group';
 import { Slider } from '@/app/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { ArrowLeft, Upload, Moon, Sun, Save, Check } from 'lucide-react';
+import { ArrowLeft, Upload, Moon, Sun, Save, Check, X, Folder } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -33,18 +33,24 @@ export function SettingsPage() {
     setDarkMode,
     userInfo,
     setUserInfo,
-    uploadFolder,
+    importFolder,
     indexedFiles,
+    indexedDirectories,
     excludedFiles,
+    excludedDirectories,
     exclusionPatterns,
     toggleIndexedFile,
     toggleExcludedFile,
+    addIndexedDirectory,
+    removeIndexedDirectory,
+    addExcludedDirectory,
+    removeExcludedDirectory,
     saveFileIndexingConfig,
   } = useChatContext();
   
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleFolderUpload = async (type: 'inclusion' | 'exclusion') => {
+  const handleFolderImport = async (type: 'inclusion' | 'exclusion') => {
     // Create a file input element
     const input = document.createElement('input');
     input.type = 'file';
@@ -54,12 +60,14 @@ export function SettingsPage() {
     input.onchange = async (e) => {
       const target = e.target as HTMLInputElement;
       if (target.files && target.files.length > 0) {
-        const folderPath = target.files[0].webkitRelativePath.split('/')[0];
         try {
-          await uploadFolder(folderPath, type);
-          // Don't save yet - user will click Save button
+          await importFolder(target.files, type);
+          // Show success message
+          const folderName = (target.files[0] as File & { webkitRelativePath?: string })
+            .webkitRelativePath?.split('/')[0] || 'folder';
+          alert(`Folder "${folderName}" imported successfully! Click "Save Configuration" to persist changes.`);
         } catch (error) {
-          alert(`Failed to upload folder: ${error}`);
+          alert(`Failed to import folder: ${error}`);
         }
       }
     };
@@ -81,11 +89,11 @@ export function SettingsPage() {
       const success = await saveFileIndexingConfig({
         inclusion: {
           files: inclusionFiles,
-          directories: [], // TODO: Track directories separately
+          directories: indexedDirectories,
         },
         exclusion: {
           files: exclusionFiles,
-          directories: [],
+          directories: excludedDirectories,
           patterns: exclusionPatterns,
         },
         context: {
@@ -298,18 +306,51 @@ export function SettingsPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
-                        onClick={() => handleFolderUpload('inclusion')}
+                        size="icon"
+                        onClick={() => handleFolderImport('inclusion')}
+                        title="Import Folder"
+                        className="h-9 w-9"
                       >
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload Folder
+                        <Upload className="h-4 w-4" />
                       </Button>
                       <span className="text-xs text-muted-foreground">Files to be indexed</span>
                     </div>
                   </div>
+                  
+                  {/* Show imported directories */}
+                  {indexedDirectories.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Imported Folders:</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {indexedDirectories.map((dir) => (
+                          <div
+                            key={dir}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-md border border-primary/20"
+                          >
+                            <span className="text-sm">{dir}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5"
+                              onClick={() => removeIndexedDirectory(dir)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="border border-black rounded-lg h-[300px] overflow-y-auto">
                     <FileNavigator type="indexing" />
                   </div>
+                  {indexedFiles.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {indexedFiles.length} file{indexedFiles.length !== 1 ? 's' : ''} selected
+                    </p>
+                  )}
                 </div>
 
                 {/* Exclusion List */}
@@ -320,19 +361,52 @@ export function SettingsPage() {
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
-                        onClick={() => handleFolderUpload('exclusion')}
+                        size="icon"
+                        onClick={() => handleFolderImport('exclusion')}
+                        title="Import Folder"
+                        className="h-9 w-9"
                       >
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload Folder
+                        <Upload className="h-4 w-4" />
                       </Button>
                       <ExclusionConfigDialog />
                       <span className="text-xs text-muted-foreground">Files to be excluded</span>
                     </div>
                   </div>
+                  
+                  {/* Show excluded directories */}
+                  {excludedDirectories.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Excluded Folders:</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {excludedDirectories.map((dir) => (
+                          <div
+                            key={dir}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 rounded-md border border-destructive/20"
+                          >
+                            <span className="text-sm">{dir}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5"
+                              onClick={() => removeExcludedDirectory(dir)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="border border-black rounded-lg h-[300px] overflow-y-auto">
                     <FileNavigator type="exclusion" />
                   </div>
+                  {excludedFiles.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {excludedFiles.length} file{excludedFiles.length !== 1 ? 's' : ''} excluded
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t">
