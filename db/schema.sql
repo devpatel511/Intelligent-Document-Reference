@@ -67,7 +67,6 @@ CREATE TABLE IF NOT EXISTS indexing_rules (
 
 -- 6. Vector Table (sqlite-vec)
 -- rowid of this table will MATCH rowid (id) of 'chunks' table
--- Assuming 1024 dimensions (standard for all-MiniLM-L6-v2 etc.)
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
     embedding float[1024]
 );
