@@ -40,6 +40,7 @@ export function FileNavigator({ type }: FileNavigatorProps) {
           isChecked={isChecked}
           onToggle={handleToggle}
           level={0}
+          type={type}
         />
       ))}
     </div>
@@ -53,25 +54,44 @@ interface FileTreeNodeProps {
   level: number;
 }
 
-function FileTreeNode({ node, isChecked, onToggle, level }: FileTreeNodeProps) {
+function FileTreeNode({ node, isChecked, onToggle, level, type }: FileTreeNodeProps & { type: 'context' | 'indexing' | 'exclusion' }) {
   const [isExpanded, setIsExpanded] = useState(level === 0);
 
   const handleCheckboxChange = (checked: boolean) => {
-    onToggle(node.path);
-    // If it's a folder, toggle all children
-    if (node.type === 'folder' && node.children) {
-      node.children.forEach((child) => {
-        if (checked !== isChecked(child.path)) {
-          onToggle(child.path);
-        }
-        if (child.type === 'folder' && child.children) {
-          child.children.forEach((grandchild) => {
-            if (checked !== isChecked(grandchild.path)) {
-              onToggle(grandchild.path);
+    if (type === 'context') {
+      // For context, only allow files (leaf nodes), not directories
+      if (node.type === 'file') {
+        onToggle(node.path);
+      } else if (node.type === 'folder' && node.children) {
+        // For folders in context mode, recursively select/deselect all file children only
+        const selectAllFiles = (n: FileNode) => {
+          if (n.type === 'file') {
+            if (checked !== isChecked(n.path)) {
+              onToggle(n.path);
             }
-          });
-        }
-      });
+          } else if (n.children) {
+            n.children.forEach(selectAllFiles);
+          }
+        };
+        node.children.forEach(selectAllFiles);
+      }
+    } else {
+      // For indexing/exclusion, allow both files and folders
+      onToggle(node.path);
+      if (node.type === 'folder' && node.children) {
+        node.children.forEach((child) => {
+          if (checked !== isChecked(child.path)) {
+            onToggle(child.path);
+          }
+          if (child.type === 'folder' && child.children) {
+            child.children.forEach((grandchild) => {
+              if (checked !== isChecked(grandchild.path)) {
+                onToggle(grandchild.path);
+              }
+            });
+          }
+        });
+      }
     }
   };
 

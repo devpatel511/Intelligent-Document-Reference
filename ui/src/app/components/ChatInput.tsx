@@ -31,15 +31,18 @@ const modelLabels = {
 };
 
 export function ChatInput() {
-  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage } =
+  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles } =
     useChatContext();
   const [input, setInput] = useState('');
+  
+  const hasIndexedFiles = indexedFiles.length > 0;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim()) {
-      sendMessage(input);
+      const message = input.trim();
       setInput('');
+      await sendMessage(message);
     }
   };
 
@@ -49,6 +52,25 @@ export function ChatInput() {
       handleSubmit(e);
     }
   };
+
+  if (!hasIndexedFiles) {
+    return (
+      <div className="space-y-3">
+        <div className="relative">
+          <Textarea
+            disabled
+            placeholder="Upload files to begin chatting..."
+            className="min-h-[120px] resize-none pr-4 pb-16 opacity-50 cursor-not-allowed"
+          />
+          <div className="absolute bottom-2 left-2 right-2 flex items-center justify-center">
+            <p className="text-sm text-muted-foreground">
+              Please upload files in Settings → File Indexing to start chatting
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">

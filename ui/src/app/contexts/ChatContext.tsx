@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 export type MessageRole = 'user' | 'assistant';
 
@@ -9,13 +9,7 @@ export interface Message {
   timestamp: Date;
 }
 
-export interface Chat {
-  id: string;
-  title: string;
-  messages: Message[];
-  createdAt: Date;
-  updatedAt: Date;
-}
+// Chat history removed - not focusing on that right now
 
 export type InferenceMode = 'retrieval' | 'q&a' | 'deep-research';
 export type ModelType = 'gpt-4' | 'gemini-2.5' | 'claude-3' | 'llama-3';
@@ -31,9 +25,7 @@ export interface FileNode {
 }
 
 interface ChatContextType {
-  chats: Chat[];
-  currentChatId: string | null;
-  currentChat: Chat | null;
+  messages: Message[];
   inferenceMode: InferenceMode;
   selectedModel: ModelType;
   selectedFiles: string[];
@@ -46,9 +38,12 @@ interface ChatContextType {
   indexedFiles: string[];
   excludedFiles: string[];
   exclusionPatterns: string[];
-  createNewChat: () => void;
-  selectChat: (chatId: string) => void;
-  sendMessage: (content: string) => void;
+  isLoading: boolean;
+  // General settings
+  systemPrompt: string;
+  darkMode: boolean;
+  userInfo: string;
+  sendMessage: (content: string) => Promise<void>;
   setInferenceMode: (mode: InferenceMode) => void;
   setSelectedModel: (model: ModelType) => void;
   toggleFileSelection: (path: string) => void;
@@ -61,103 +56,28 @@ interface ChatContextType {
   toggleExcludedFile: (path: string) => void;
   addExclusionPattern: (pattern: string) => void;
   removeExclusionPattern: (pattern: string) => void;
+  setSystemPrompt: (prompt: string) => void;
+  setDarkMode: (enabled: boolean) => void;
+  setUserInfo: (info: string) => void;
+  uploadFolder: (folderPath: string, type: 'inclusion' | 'exclusion') => Promise<void>;
+  saveFileIndexingConfig: (config: {
+    inclusion?: { files?: string[]; directories?: string[] };
+    exclusion?: { files?: string[]; directories?: string[]; patterns?: string[] };
+    context?: { files?: string[] };
+  }) => Promise<boolean>;
+  loadFiles: () => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-const mockFileTree: FileNode[] = [
-  {
-    id: '1',
-    name: 'documents',
-    type: 'folder',
-    path: '/documents',
-    children: [
-      { id: '1-1', name: 'research_paper.pdf', type: 'file', path: '/documents/research_paper.pdf' },
-      { id: '1-2', name: 'notes.txt', type: 'file', path: '/documents/notes.txt' },
-      {
-        id: '1-3',
-        name: 'reports',
-        type: 'folder',
-        path: '/documents/reports',
-        children: [
-          { id: '1-3-1', name: 'Q1_report.docx', type: 'file', path: '/documents/reports/Q1_report.docx' },
-          { id: '1-3-2', name: 'Q2_report.docx', type: 'file', path: '/documents/reports/Q2_report.docx' },
-        ],
-      },
-    ],
-  },
-  {
-    id: '2',
-    name: 'projects',
-    type: 'folder',
-    path: '/projects',
-    children: [
-      { id: '2-1', name: 'project_proposal.md', type: 'file', path: '/projects/project_proposal.md' },
-      { id: '2-2', name: 'architecture.drawio', type: 'file', path: '/projects/architecture.drawio' },
-    ],
-  },
-  {
-    id: '3',
-    name: 'references',
-    type: 'folder',
-    path: '/references',
-    children: [
-      { id: '3-1', name: 'api_documentation.pdf', type: 'file', path: '/references/api_documentation.pdf' },
-      { id: '3-2', name: 'user_guide.pdf', type: 'file', path: '/references/user_guide.pdf' },
-    ],
-  },
-];
-
-const initialChats: Chat[] = [
-  {
-    id: '1',
-    title: 'Research on Machine Learning',
-    messages: [
-      {
-        id: 'm1',
-        role: 'user',
-        content: 'Can you explain the key concepts in machine learning?',
-        timestamp: new Date('2025-01-28T10:00:00'),
-      },
-      {
-        id: 'm2',
-        role: 'assistant',
-        content: 'Machine learning is a subset of artificial intelligence that focuses on building systems that learn from data. Key concepts include supervised learning, unsupervised learning, neural networks, and deep learning...',
-        timestamp: new Date('2025-01-28T10:00:15'),
-      },
-    ],
-    createdAt: new Date('2025-01-28T10:00:00'),
-    updatedAt: new Date('2025-01-28T10:00:15'),
-  },
-  {
-    id: '2',
-    title: 'Project Architecture Discussion',
-    messages: [
-      {
-        id: 'm3',
-        role: 'user',
-        content: 'Help me design a scalable microservices architecture',
-        timestamp: new Date('2025-01-27T15:30:00'),
-      },
-      {
-        id: 'm4',
-        role: 'assistant',
-        content: 'For a scalable microservices architecture, consider these key components: API Gateway, Service Discovery, Load Balancing, and Container Orchestration...',
-        timestamp: new Date('2025-01-27T15:30:20'),
-      },
-    ],
-    createdAt: new Date('2025-01-27T15:30:00'),
-    updatedAt: new Date('2025-01-27T15:30:20'),
-  },
-];
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const [chats, setChats] = useState<Chat[]>(initialChats);
-  const [currentChatId, setCurrentChatId] = useState<string | null>(initialChats[0].id);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inferenceMode, setInferenceMode] = useState<InferenceMode>('retrieval');
   const [selectedModel, setSelectedModel] = useState<ModelType>('gpt-4');
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
-  const [fileTree] = useState<FileNode[]>(mockFileTree);
+  const [fileTree, setFileTree] = useState<FileNode[]>([]);
   const [modelProvider, setModelProvider] = useState<ModelProvider>('online');
   const [localEndpoint, setLocalEndpoint] = useState<string>('http://localhost:8000');
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({
@@ -167,38 +87,104 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   });
   const [temperature, setTemperature] = useState<number>(0.7);
   const [contextSize, setContextSize] = useState<number>(4096);
-  const [indexedFiles, setIndexedFiles] = useState<string[]>([
-    '/documents/research_paper.pdf',
-    '/documents/notes.txt',
-  ]);
+  const [indexedFiles, setIndexedFiles] = useState<string[]>([]);
   const [excludedFiles, setExcludedFiles] = useState<string[]>([]);
   const [exclusionPatterns, setExclusionPatterns] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  // General settings
+  const [systemPrompt, setSystemPrompt] = useState<string>('You are a helpful AI assistant that provides accurate and detailed answers based on the provided context.');
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [userInfo, setUserInfo] = useState<string>('');
 
-  const currentChat = chats.find((chat) => chat.id === currentChatId) || null;
+  // Load files and context from backend on mount
+  useEffect(() => {
+    loadFiles();
+    loadContextFiles();
+    loadFileIndexingConfig();
+  }, []);
 
-  const createNewChat = () => {
-    const newChat: Chat = {
-      id: Date.now().toString(),
-      title: 'New Conversation',
-      messages: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setChats([newChat, ...chats]);
-    setCurrentChatId(newChat.id);
-  };
-
-  const selectChat = (chatId: string) => {
-    setCurrentChatId(chatId);
-  };
-
-  const sendMessage = (content: string) => {
-    if (!currentChatId) {
-      createNewChat();
+  const loadContextFiles = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/context`);
+      const data = await response.json();
+      if (data.files && Array.isArray(data.files)) {
+        // Only set files, filter out directories
+        const filesOnly = data.files.filter((path: string) => !path.endsWith('/'));
+        setSelectedFiles(filesOnly);
+      }
+    } catch (error) {
+      console.error('Failed to load context files:', error);
     }
+  };
 
-    const chatId = currentChatId || Date.now().toString();
+  const loadFileIndexingConfig = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/indexing`);
+      const data = await response.json();
+      if (data.inclusion) {
+        // Combine files and files from directories
+        const allIncluded: string[] = [];
+        if (data.inclusion.files) {
+          allIncluded.push(...data.inclusion.files);
+        }
+        // TODO: Expand directories to individual files if needed
+        setIndexedFiles(allIncluded);
+      }
+      if (data.exclusion) {
+        if (data.exclusion.files) {
+          setExcludedFiles(data.exclusion.files);
+        }
+        if (data.exclusion.patterns) {
+          setExclusionPatterns(data.exclusion.patterns);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load file indexing config:', error);
+    }
+  };
 
+  const saveFileIndexingConfig = async (config: {
+    inclusion?: { files?: string[]; directories?: string[] };
+    exclusion?: { files?: string[]; directories?: string[]; patterns?: string[] };
+    context?: { files?: string[] };
+  }) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/indexing`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config),
+      });
+      const data = await response.json();
+      if (data.status === 'ok') {
+        // Reload context files after save
+        await loadContextFiles();
+        await loadFileIndexingConfig();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to save file indexing config:', error);
+      return false;
+    }
+  };
+
+  const loadFiles = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/`);
+      const data = await response.json();
+      if (data.files && Array.isArray(data.files)) {
+        setFileTree(data.files);
+      }
+    } catch (error) {
+      console.error('Failed to load files:', error);
+      // Keep empty file tree on error
+      setFileTree([]);
+    }
+  };
+
+  const sendMessage = async (content: string) => {
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
       role: 'user',
@@ -206,26 +192,47 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       timestamp: new Date(),
     };
 
-    // Mock assistant response
-    const assistantMessage: Message = {
-      id: `msg-${Date.now() + 1}`,
-      role: 'assistant',
-      content: `This is a mock response to: "${content}". In a real application, this would be generated by the selected model (${selectedModel}) in ${inferenceMode} mode.`,
-      timestamp: new Date(),
-    };
+    setMessages((prev) => [...prev, userMessage]);
+    setIsLoading(true);
 
-    setChats((prevChats) =>
-      prevChats.map((chat) =>
-        chat.id === chatId
-          ? {
-              ...chat,
-              messages: [...chat.messages, userMessage, assistantMessage],
-              updatedAt: new Date(),
-              title: chat.messages.length === 0 ? content.slice(0, 50) : chat.title,
-            }
-          : chat
-      )
-    );
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: content,
+          model: selectedModel,
+          mode: inferenceMode,
+          selected_files: selectedFiles,
+          temperature,
+          context_size: contextSize,
+        }),
+      });
+
+      const data = await response.json();
+      
+      const assistantMessage: Message = {
+        id: `msg-${Date.now() + 1}`,
+        role: 'assistant',
+        content: data.answer || 'No response received',
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      const errorMessage: Message = {
+        id: `msg-${Date.now() + 1}`,
+        role: 'assistant',
+        content: 'Error: Failed to get response from server. Please check your connection and try again.',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const toggleFileSelection = (path: string) => {
@@ -258,12 +265,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setExclusionPatterns((prev) => prev.filter((p) => p !== pattern));
   };
 
+  const uploadFolder = async (folderPath: string, type: 'inclusion' | 'exclusion') => {
+    try {
+      // TODO: Implement actual folder upload API call
+      // For now, just add to the appropriate list
+      if (type === 'inclusion') {
+        setIndexedFiles((prev) => [...prev, folderPath]);
+      } else {
+        setExcludedFiles((prev) => [...prev, folderPath]);
+      }
+    } catch (error) {
+      console.error('Failed to upload folder:', error);
+      throw error;
+    }
+  };
+
   return (
     <ChatContext.Provider
       value={{
-        chats,
-        currentChatId,
-        currentChat,
+        messages,
         inferenceMode,
         selectedModel,
         selectedFiles,
@@ -276,8 +296,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         indexedFiles,
         excludedFiles,
         exclusionPatterns,
-        createNewChat,
-        selectChat,
+        isLoading,
+        systemPrompt,
+        darkMode,
+        userInfo,
         sendMessage,
         setInferenceMode,
         setSelectedModel,
@@ -291,6 +313,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         toggleExcludedFile,
         addExclusionPattern,
         removeExclusionPattern,
+        setSystemPrompt,
+        setDarkMode,
+        setUserInfo,
+        uploadFolder,
+        saveFileIndexingConfig,
+        loadFiles,
       }}
     >
       {children}

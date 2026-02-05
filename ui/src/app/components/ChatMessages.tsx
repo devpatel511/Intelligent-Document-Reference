@@ -7,16 +7,16 @@ import { cn } from '@/app/components/ui/utils';
 import { format } from 'date-fns';
 
 export function ChatMessages() {
-  const { currentChat } = useChatContext();
+  const { messages, isLoading } = useChatContext();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [currentChat?.messages]);
+  }, [messages]);
 
-  if (!currentChat || currentChat.messages.length === 0) {
+  if (messages.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center space-y-4 max-w-md px-4">
@@ -38,7 +38,7 @@ export function ChatMessages() {
   return (
     <ScrollArea className="h-full" ref={scrollRef}>
       <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-        {currentChat.messages.map((message) => (
+        {messages.map((message) => (
           <div
             key={message.id}
             className={cn(
@@ -84,6 +84,20 @@ export function ChatMessages() {
             )}
           </div>
         ))}
+        {isLoading && (
+          <div className="flex gap-4 justify-start">
+            <Avatar className="h-8 w-8 mt-1">
+              <AvatarFallback className="bg-primary text-primary-foreground">
+                <Bot className="h-4 w-4" />
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 space-y-2 max-w-[80%]">
+              <div className="rounded-lg px-4 py-3 bg-muted">
+                <p className="text-sm text-muted-foreground">Thinking...</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </ScrollArea>
   );

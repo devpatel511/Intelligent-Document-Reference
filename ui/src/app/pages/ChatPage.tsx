@@ -1,31 +1,19 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatContext } from '@/app/contexts/ChatContext';
-import { FileNavigator } from '@/app/components/FileNavigator';
-import { ChatHistory } from '@/app/components/ChatHistory';
+import { SelectedFilesList } from '@/app/components/SelectedFilesList';
 import { ChatMessages } from '@/app/components/ChatMessages';
 import { ChatInput } from '@/app/components/ChatInput';
 import { Button } from '@/app/components/ui/button';
-import { Settings, PanelLeftClose, PanelLeft, History, PanelRightClose } from 'lucide-react';
+import { Settings, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
 export function ChatPage() {
   const [showFileNav, setShowFileNav] = useState(true);
-  const [showHistory, setShowHistory] = useState(true);
   const navigate = useNavigate();
 
   return (
     <div className="flex h-screen bg-background">
-      {/* Chat History Sidebar */}
-      <div
-        className={cn(
-          'border-r bg-card transition-all duration-300',
-          showHistory ? 'w-64' : 'w-0 overflow-hidden'
-        )}
-      >
-        {showHistory && <ChatHistory onClose={() => setShowHistory(false)} />}
-      </div>
-
       {/* File Navigator */}
       <div
         className={cn(
@@ -47,11 +35,19 @@ export function ChatPage() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Select files to include in context
+                Files selected for context
               </p>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs mt-1"
+                onClick={() => navigate('/settings')}
+              >
+                Manage in Settings →
+              </Button>
             </div>
             <div className="flex-1 overflow-y-auto">
-              <FileNavigator type="context" />
+              <SelectedFilesList />
             </div>
           </div>
         )}
@@ -62,15 +58,6 @@ export function ChatPage() {
         {/* Header */}
         <div className="h-16 border-b flex items-center justify-between px-4 bg-card">
           <div className="flex items-center gap-2">
-            {!showHistory && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowHistory(true)}
-              >
-                <History className="h-4 w-4" />
-              </Button>
-            )}
             {!showFileNav && (
               <Button
                 variant="ghost"

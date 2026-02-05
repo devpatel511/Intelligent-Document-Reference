@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatContext } from '@/app/contexts/ChatContext';
 import { FileNavigator } from '@/app/components/FileNavigator';
@@ -5,11 +6,13 @@ import { ExclusionConfigDialog } from '@/app/components/ExclusionConfigDialog';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import { Textarea } from '@/app/components/ui/textarea';
+import { Switch } from '@/app/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/app/components/ui/radio-group';
 import { Slider } from '@/app/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Upload, Moon, Sun, Save, Check } from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -24,7 +27,83 @@ export function SettingsPage() {
     setTemperature,
     contextSize,
     setContextSize,
+    systemPrompt,
+    setSystemPrompt,
+    darkMode,
+    setDarkMode,
+    userInfo,
+    setUserInfo,
+    uploadFolder,
+    indexedFiles,
+    excludedFiles,
+    exclusionPatterns,
+    toggleIndexedFile,
+    toggleExcludedFile,
+    saveFileIndexingConfig,
   } = useChatContext();
+  
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleFolderUpload = async (type: 'inclusion' | 'exclusion') => {
+    // Create a file input element
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.webkitdirectory = true;
+    input.multiple = true;
+    
+    input.onchange = async (e) => {
+      const target = e.target as HTMLInputElement;
+      if (target.files && target.files.length > 0) {
+        const folderPath = target.files[0].webkitRelativePath.split('/')[0];
+        try {
+          await uploadFolder(folderPath, type);
+          // Don't save yet - user will click Save button
+        } catch (error) {
+          alert(`Failed to upload folder: ${error}`);
+        }
+      }
+    };
+    
+    input.click();
+  };
+
+  const handleSaveFileIndexing = async () => {
+    setIsSaving(true);
+    try {
+      // Collect all selected files (only files, not directories)
+      const inclusionFiles = indexedFiles.filter(f => !f.endsWith('/'));
+      const exclusionFiles = excludedFiles.filter(f => !f.endsWith('/'));
+      
+      // Get context files from indexed files that are selected
+      // For now, we'll use indexedFiles as context files (user selects in inclusion)
+      const contextFiles = inclusionFiles;
+      
+      const success = await saveFileIndexingConfig({
+        inclusion: {
+          files: inclusionFiles,
+          directories: [], // TODO: Track directories separately
+        },
+        exclusion: {
+          files: exclusionFiles,
+          directories: [],
+          patterns: exclusionPatterns,
+        },
+        context: {
+          files: contextFiles,
+        },
+      });
+      
+      if (success) {
+        alert('File indexing configuration saved successfully!');
+      } else {
+        alert('Failed to save file indexing configuration.');
+      }
+    } catch (error) {
+      alert(`Error saving configuration: ${error}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -40,12 +119,89 @@ export function SettingsPage() {
 
       {/* Settings Content */}
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Tabs defaultValue="models" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="general" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="general">General Settings</TabsTrigger>
             <TabsTrigger value="models">Model Configuration</TabsTrigger>
             <TabsTrigger value="indexing">File Indexing</TabsTrigger>
             <TabsTrigger value="advanced">Advanced Settings</TabsTrigger>
           </TabsList>
+
+          {/* General Settings */}
+          <TabsContent value="general" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Appearance</CardTitle>
+                <CardDescription>Customize the look and feel of the application</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="dark-mode">Dark Mode</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Switch between light and dark theme
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {darkMode ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                    <Switch
+                      id="dark-mode"
+                      checked={darkMode}
+                      onCheckedChange={setDarkMode}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>System Prompt</CardTitle>
+                <CardDescription>
+                  Customize the system prompt that guides the AI's behavior
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="system-prompt">System Prompt</Label>
+                  <Textarea
+                    id="system-prompt"
+                    value={systemPrompt}
+                    onChange={(e) => setSystemPrompt(e.target.value)}
+                    placeholder="You are a helpful AI assistant..."
+                    className="min-h-[120px]"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    This prompt will be used to set the AI's behavior and personality
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>User Information</CardTitle>
+                <CardDescription>
+                  Provide context about yourself to personalize responses
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="user-info">User Information</Label>
+                  <Textarea
+                    id="user-info"
+                    value={userInfo}
+                    onChange={(e) => setUserInfo(e.target.value)}
+                    placeholder="Enter information about yourself, your role, preferences, etc."
+                    className="min-h-[100px]"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    This information will help the AI provide more personalized responses
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Model Configuration */}
           <TabsContent value="models" className="space-y-6">
@@ -138,7 +294,18 @@ export function SettingsPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="font-medium">Inclusion List</h3>
-                    <span className="text-xs text-muted-foreground">Files to be indexed</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleFolderUpload('inclusion')}
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Folder
+                      </Button>
+                      <span className="text-xs text-muted-foreground">Files to be indexed</span>
+                    </div>
                   </div>
                   <div className="border border-black rounded-lg h-[300px] overflow-y-auto">
                     <FileNavigator type="indexing" />
@@ -149,7 +316,16 @@ export function SettingsPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="font-medium">Exclusion List</h3>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleFolderUpload('exclusion')}
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Folder
+                      </Button>
                       <ExclusionConfigDialog />
                       <span className="text-xs text-muted-foreground">Files to be excluded</span>
                     </div>
@@ -159,9 +335,28 @@ export function SettingsPage() {
                   </div>
                 </div>
 
-                <p className="text-sm text-muted-foreground">
-                  Included files will be used for retrieval-augmented generation, while excluded files will be ignored. Changes are saved automatically.
-                </p>
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Included files will be used for retrieval-augmented generation, while excluded files will be ignored. You can upload entire folders or select individual files.
+                  </p>
+                  <Button
+                    onClick={handleSaveFileIndexing}
+                    disabled={isSaving}
+                    className="ml-4"
+                  >
+                    {isSaving ? (
+                      <>
+                        <span className="animate-spin mr-2">⏳</span>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Configuration
+                      </>
+                    )}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

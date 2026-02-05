@@ -1,18 +1,46 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ChatProvider } from '@/app/contexts/ChatContext';
+import { ThemeProvider } from 'next-themes';
+import { ChatProvider, useChatContext } from '@/app/contexts/ChatContext';
 import { ChatPage } from '@/app/pages/ChatPage';
 import { SettingsPage } from '@/app/pages/SettingsPage';
+import { useEffect } from 'react';
+
+function DarkModeHandler() {
+  const { darkMode } = useChatContext();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (darkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  return null;
+}
+
+function AppContent() {
+  return (
+    <>
+      <DarkModeHandler />
+      <Routes>
+        <Route path="/" element={<Navigate to="/chat" replace />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Routes>
+    </>
+  );
+}
 
 export default function App() {
   return (
-    <Router>
-      <ChatProvider>
-        <Routes>
-          <Route path="/" element={<Navigate to="/chat" replace />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
-      </ChatProvider>
-    </Router>
+    <ThemeProvider attribute="class" defaultTheme="light">
+      <Router>
+        <ChatProvider>
+          <AppContent />
+        </ChatProvider>
+      </Router>
+    </ThemeProvider>
   );
 }
