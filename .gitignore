@@ -12,6 +12,7 @@ __pycache__/
 # Data and environment
 data/
 .env
+/node_modules
 
 # macOS
 .DS_Store
