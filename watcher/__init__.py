@@ -1,2 +1,0 @@
-"""Filesystem watcher package."""
-

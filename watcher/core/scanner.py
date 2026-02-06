@@ -20,13 +20,21 @@ class FileScanner:
         except OSError:
             return None
 
-    def scan_directory(self, path: str) -> Generator[Tuple[str, Dict[str, Any]], None, None]:
+    def scan_directory(self, path: str, excluded_files: list[str] = None) -> Generator[Tuple[str, Dict[str, Any]], None, None]:
+        if excluded_files is None:
+            excluded_files = []
+        excluded_set = set(os.path.abspath(f) for f in excluded_files)
+
         for root, dirs, files in os.walk(path):
             # Filter directories
             # TODO: Implement proper ignore pattern logic (like .gitignore)
             
             for file in files:
                 file_path = os.path.join(root, file)
+                abs_path = os.path.abspath(file_path)
+                if abs_path in excluded_set:
+                    continue
+
                 try:
                     stats = os.stat(file_path)
                     file_info = {

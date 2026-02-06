@@ -26,6 +26,16 @@ class FileRegistry:
                     timestamp REAL
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS monitor_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT UNIQUE NOT NULL,
+                    recursive BOOLEAN DEFAULT 1,
+                    excluded_files TEXT,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             conn.commit()
 
     def add_event(self, path: str, event_type: str):
@@ -87,6 +97,49 @@ class FileRegistry:
                     last_modified=excluded.last_modified
             """, (path, last_modified))
             conn.commit()
+
+    def add_watch_path(self, path: str, excluded_files: List[str] = None):
+        import json
+        if excluded_files is None:
+            excluded_files = []
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO monitor_config (path, excluded_files, is_active)
+                VALUES (?, ?, 1)
+                ON CONFLICT(path) DO UPDATE SET
+                    excluded_files=excluded.excluded_files,
+                    is_active=1
+            """, (path, json.dumps(excluded_files)))
+            conn.commit()
+
+    def get_watch_paths(self) -> List[Dict[str, Any]]:
+        import json
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM monitor_config WHERE is_active = 1")
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                d = dict(row)
+                d['excluded_files'] = json.loads(d['excluded_files']) if d['excluded_files'] else []
+                results.append(d)
+            return results
+
+    def remove_watch_path(self, path: str):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE monitor_config SET is_active = 0 WHERE path = ?", (path,))
+            conn.commit()
+
+    def remove_watch_path_by_id(self, id: int):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE monitor_config SET is_active = 0 WHERE id = ?", (id,))
+            conn.commit()
+
 
     def get_file_state(self, path: str) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
