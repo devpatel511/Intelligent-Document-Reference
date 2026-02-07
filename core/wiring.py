@@ -5,7 +5,8 @@ Responsibilities:
 - wire jobs -> indexing workers
 - ensure backend routes receive AppContext
 """
+
+
 def wiring(ctx):
     # TODO: implement actual subscription wiring
     print("[core.wiring] wiring stubs in place")
-

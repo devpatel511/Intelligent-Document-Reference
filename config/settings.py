@@ -2,12 +2,15 @@
 
 TODO: load YAML / environment variables and expose a Settings object.
 """
-from dataclasses import dataclass
+
 import os
+from dataclasses import dataclass
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
 
 @dataclass
 class Settings:
@@ -18,6 +21,6 @@ class Settings:
     default_inference_backend: str = "api"
     embedding_dimension: int = int(os.getenv("EMBEDDING_DIMENSION", "1024"))
 
+
 def load_settings() -> Settings:
     return Settings()
-

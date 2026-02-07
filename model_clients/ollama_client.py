@@ -1,5 +1,7 @@
 """Ollama (local) client stub supporting embeddings and inference."""
+
 from .base import EmbeddingClient, InferenceClient
+
 
 class OllamaClient(EmbeddingClient, InferenceClient):
     def __init__(self, url: str):
@@ -10,4 +12,3 @@ class OllamaClient(EmbeddingClient, InferenceClient):
 
     def generate(self, prompt: str, **kwargs):
         raise NotImplementedError
-
