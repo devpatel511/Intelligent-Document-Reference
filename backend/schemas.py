@@ -1,3 +1,3 @@
 """Pydantic request/response schemas (stubs)."""
-# TODO: define request/response models
 
+# TODO: define request/response models

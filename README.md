@@ -27,7 +27,7 @@ If you prefer to set up manually, see the [Installation](#installation) section 
 
 ### Prerequisites
 
-- **Python 3.10 or higher** - [Download Python](https://www.python.org/downloads/)
+- **Python 3.11 or higher** - [Download Python](https://www.python.org/downloads/)
 - **Node.js 18+ and npm** - [Download Node.js](https://nodejs.org/)
 - **Git** (optional, for cloning the repository)
 
@@ -42,7 +42,7 @@ python3 app.py --setup
 This will:
 1. Check for required tools (Python, Node.js, npm)
 2. Create a Python virtual environment (`.venv`)
-3. Install Python dependencies (using Poetry if available, otherwise pip)
+3. Install Python dependencies (using uv if available, otherwise pip)
 4. Install Node.js dependencies in the `ui/` directory
 5. Build the frontend application
 
@@ -72,19 +72,14 @@ python -m venv .venv
 
 #### 2. Install Python Dependencies
 
-**Using Poetry (recommended):**
+**Using uv (recommended):**
 ```bash
-poetry install
+uv sync
 ```
 
 **Using pip:**
 ```bash
-pip install -r requirements.txt
-```
-
-Or install manually:
-```bash
-pip install fastapi uvicorn[standard] pydantic typer python-dotenv watchdog httpx
+pip install .
 ```
 
 #### 3. Install Node.js Dependencies

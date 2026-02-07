@@ -2,8 +2,10 @@
 
 Stores initialized subsystems and configuration for runtime routing.
 """
+
 from dataclasses import dataclass
 from typing import Any, Optional
+
 
 @dataclass
 class AppContext:
@@ -14,4 +16,3 @@ class AppContext:
     inference_client: Optional[Any] = None
     job_queue: Optional[Any] = None
     watcher: Optional[Any] = None
-

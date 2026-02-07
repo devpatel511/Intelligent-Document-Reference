@@ -1,5 +1,7 @@
 """Google embeddings client stub."""
+
 from .base import EmbeddingClient
+
 
 class GoogleEmbeddingClient(EmbeddingClient):
     def __init__(self, api_key: str):
@@ -7,4 +9,3 @@ class GoogleEmbeddingClient(EmbeddingClient):
 
     def embed_text(self, texts):
         raise NotImplementedError
-

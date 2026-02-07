@@ -9,6 +9,9 @@ __pycache__/
 # Pytest cache
 .pytest_cache/
 
+# ruff cache
+.ruff_cache/
+
 # Data and environment
 data/
 .env
