@@ -5,8 +5,8 @@ import os
 import shutil
 import subprocess
 import sys
-import venv
 import tomllib
+import venv
 from pathlib import Path
 
 
@@ -102,12 +102,10 @@ def setup_environment():
             pyproject_file = project_root / "pyproject.toml"
             with open(pyproject_file, "rb") as f:
                 pyproject_data = tomllib.load(f)
-                
+
             dependencies = pyproject_data["project"]["dependencies"]
             subprocess.run(
-                [str(venv_pip), "install"] + dependencies, 
-                check=True, 
-                cwd=project_root
+                [str(venv_pip), "install"] + dependencies, check=True, cwd=project_root
             )
         print("✓ Python dependencies installed")
     except Exception as e:
