@@ -74,17 +74,12 @@ python -m venv .venv
 
 **Using uv (recommended):**
 ```bash
-uv sync --group dev
+uv sync
 ```
 
 **Using pip:**
 ```bash
-pip install -r requirements.txt
-```
-
-Or install manually:
-```bash
-pip install fastapi uvicorn[standard] pydantic typer python-dotenv watchdog httpx
+pip install .
 ```
 
 #### 3. Install Node.js Dependencies

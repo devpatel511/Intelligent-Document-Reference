@@ -30,12 +30,12 @@ jobs:
     
     - name: Install dependencies
       run: uv sync --group dev --frozen
-    
-    - name: Check formatting (black)
-      run: uv run black --check .
 
     - name: Check import order (isort)
       run: uv run isort --check-only .
+    
+    - name: Check formatting (black)
+      run: uv run black --check .
 
     - name: Lint (ruff)
       run: uv run ruff check .

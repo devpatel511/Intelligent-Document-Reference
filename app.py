@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import venv
+import tomllib
 from pathlib import Path
 
 
@@ -92,38 +93,24 @@ def setup_environment():
     # Install Python dependencies
     print("\nInstalling Python dependencies...")
     try:
-        # Check if poetry is available
-        if check_command_exists("poetry"):
-            print("Using Poetry to install dependencies...")
-            subprocess.run(["poetry", "install"], check=True, cwd=project_root)
+        # Check if uv is available
+        if check_command_exists("uv"):
+            print("Using uv to install dependencies...")
+            subprocess.run(["uv", "sync"], check=True, cwd=project_root)
         else:
-            print("Poetry not found. Installing dependencies with pip...")
-            # Try to use requirements.txt if it exists, otherwise install directly
-            requirements_file = project_root / "requirements.txt"
-            if requirements_file.exists():
-                subprocess.run(
-                    [str(venv_pip), "install", "-r", str(requirements_file)],
-                    check=True,
-                    cwd=project_root,
-                )
-            else:
-                # Fallback: install dependencies directly
-                dependencies = [
-                    "fastapi>=0.95.0",
-                    "uvicorn[standard]>=0.22.0",
-                    "pydantic>=2.0.0",
-                    "typer>=0.7.0",
-                    "python-dotenv>=1.0.0",
-                    "watchdog>=3.0.0",
-                    "httpx>=0.24.0",
-                ]
-                subprocess.run(
-                    [str(venv_pip), "install"] + dependencies,
-                    check=True,
-                    cwd=project_root,
-                )
+            print("uv not found. Installing dependencies with pip...")
+            pyproject_file = project_root / "pyproject.toml"
+            with open(pyproject_file, "rb") as f:
+                pyproject_data = tomllib.load(f)
+                
+            dependencies = pyproject_data["project"]["dependencies"]
+            subprocess.run(
+                [str(venv_pip), "install"] + dependencies, 
+                check=True, 
+                cwd=project_root
+            )
         print("✓ Python dependencies installed")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f"ERROR: Failed to install Python dependencies: {e}")
         sys.exit(1)
 
