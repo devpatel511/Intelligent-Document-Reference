@@ -83,7 +83,7 @@ def setup_environment():
     # Determine the correct pip and python paths for the venv (cross-platform)
     # Python's venv module handles this automatically, but we need the paths
     if sys.platform == "win32":
-        # venv_python = venv_path / "Scripts" / "python.exe" # noqa
+        venv_python = venv_path / "Scripts" / "python.exe"  # noqa
         venv_pip = venv_path / "Scripts" / "pip.exe"
     else:
         venv_python = venv_path / "bin" / "python"  # noqa
