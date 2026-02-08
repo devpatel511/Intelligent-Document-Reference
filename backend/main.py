@@ -1,4 +1,5 @@
 """FastAPI app entrypoint."""
+
 from pathlib import Path
 
 from fastapi import FastAPI, Request

@@ -20,6 +20,7 @@ class BaseWatcher(ABC):
     def stop(self):
         pass
 
+
 class WatchdogHandler(FileSystemEventHandler):
     def __init__(self, callback, excluded_files=None):
         self.callback = callback
@@ -27,6 +28,7 @@ class WatchdogHandler(FileSystemEventHandler):
 
     def _is_excluded(self, path):
         import os
+
         return os.path.abspath(path) in self.excluded_files
 
     def on_modified(self, event):
@@ -45,6 +47,7 @@ class WatchdogHandler(FileSystemEventHandler):
         if not event.is_directory and not self._is_excluded(event.src_path):
             self.callback(event.src_path, "moved", dest_path=event.dest_path)
 
+
 class CrossPlatformWatcher(BaseWatcher):
     def __init__(self, callback: Callable):
         super().__init__(callback)
@@ -56,15 +59,16 @@ class CrossPlatformWatcher(BaseWatcher):
     def start(self, paths: List[str]):
         # Initial bulk start
         for path in paths:
-             # Default behavior for start() list
+            # Default behavior for start() list
             self.schedule_watch(path, [])
         self.observer.start()
 
     def schedule_watch(self, path: str, excluded_files: List[str]):
         if path in self._watched_paths:
-            return # Already watched
-            
+            return  # Already watched
+
         import os
+
         if not os.path.exists(path):
             self.logger.warning(f"Path does not exist: {path}")
             return
@@ -86,13 +90,13 @@ class CrossPlatformWatcher(BaseWatcher):
 
     def stop(self):
 
-
         self.observer.stop()
         self.observer.join()
+
 
 def get_watcher(callback: Callable) -> BaseWatcher:
     # In a pure "plug-in" manual implementation, we would selectively
     # instantiate LinuxInotifyWatcher, WindowsReadDirWatcher etc.
-    # checking platform.system(). 
+    # checking platform.system().
     # Since watchdog handles this internally, we wrap it.
     return CrossPlatformWatcher(callback)

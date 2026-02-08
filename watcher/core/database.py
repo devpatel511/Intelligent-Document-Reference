@@ -43,28 +43,37 @@ class FileRegistry:
         """Add a file event to the processing queue. If event exists, update it."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            
+
             # Check for existing event for this file
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT id FROM processing_queue 
                 WHERE file_path = ?
-            """, (path,))
+            """,
+                (path,),
+            )
             existing = cursor.fetchone()
 
             if existing:
                 # Update timestamp
-                cursor.execute("""
+                cursor.execute(
+                    """
                     UPDATE processing_queue 
                     SET timestamp = ?, event_type = ?
                     WHERE id = ?
-                """, (datetime.now().timestamp(), event_type, existing[0]))
+                """,
+                    (datetime.now().timestamp(), event_type, existing[0]),
+                )
             else:
                 # Insert new event
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO processing_queue (file_path, event_type, timestamp)
                     VALUES (?, ?, ?)
-                """, (path, event_type, datetime.now().timestamp()))
-            
+                """,
+                    (path, event_type, datetime.now().timestamp()),
+                )
+
             conn.commit()
 
     def pop_next_event(self) -> Optional[Dict[str, Any]]:
@@ -72,7 +81,7 @@ class FileRegistry:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            
+
             # Select oldest event
             cursor.execute("""
                 SELECT * FROM processing_queue 
@@ -80,10 +89,12 @@ class FileRegistry:
                 LIMIT 1
             """)
             row = cursor.fetchone()
-            
+
             if row:
                 # DELETE execution happens here - strictly simulating 'popping' from queue
-                cursor.execute("DELETE FROM processing_queue WHERE id = ?", (row['id'],))
+                cursor.execute(
+                    "DELETE FROM processing_queue WHERE id = ?", (row["id"],)
+                )
                 conn.commit()
                 return dict(row)
             return None
@@ -91,32 +102,40 @@ class FileRegistry:
     def upsert_file(self, path: str, last_modified: float):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO watched_files (path, last_modified)
                 VALUES (?, ?)
                 ON CONFLICT(path) DO UPDATE SET
                     last_modified=excluded.last_modified
-            """, (path, last_modified))
+            """,
+                (path, last_modified),
+            )
             conn.commit()
 
     def add_watch_path(self, path: str, excluded_files: List[str] = None):
         import json
+
         if excluded_files is None:
             excluded_files = []
-        
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO monitor_config (path, excluded_files, is_active)
                 VALUES (?, ?, 1)
                 ON CONFLICT(path) DO UPDATE SET
                     excluded_files=excluded.excluded_files,
                     is_active=1
-            """, (path, json.dumps(excluded_files)))
+            """,
+                (path, json.dumps(excluded_files)),
+            )
             conn.commit()
 
     def get_watch_paths(self) -> List[Dict[str, Any]]:
         import json
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
@@ -125,22 +144,27 @@ class FileRegistry:
             results = []
             for row in rows:
                 d = dict(row)
-                d['excluded_files'] = json.loads(d['excluded_files']) if d['excluded_files'] else []
+                d["excluded_files"] = (
+                    json.loads(d["excluded_files"]) if d["excluded_files"] else []
+                )
                 results.append(d)
             return results
 
     def remove_watch_path(self, path: str):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE monitor_config SET is_active = 0 WHERE path = ?", (path,))
+            cursor.execute(
+                "UPDATE monitor_config SET is_active = 0 WHERE path = ?", (path,)
+            )
             conn.commit()
 
     def remove_watch_path_by_id(self, id: int):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE monitor_config SET is_active = 0 WHERE id = ?", (id,))
+            cursor.execute(
+                "UPDATE monitor_config SET is_active = 0 WHERE id = ?", (id,)
+            )
             conn.commit()
-
 
     def get_file_state(self, path: str) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
@@ -148,11 +172,7 @@ class FileRegistry:
             cursor.execute("SELECT * FROM watched_files WHERE path = ?", (path,))
             row = cursor.fetchone()
             if row:
-                return {
-                    "id": row[0],
-                    "path": row[1],
-                    "last_modified": row[2]
-                }
+                return {"id": row[0], "path": row[1], "last_modified": row[2]}
             return None
 
     def remove_file(self, path: str):

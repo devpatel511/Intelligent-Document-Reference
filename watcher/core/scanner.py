@@ -14,14 +14,16 @@ class FileScanner:
     def calculate_hash(self, file_path: str, block_size=65536) -> str:
         sha256 = hashlib.sha256()
         try:
-            with open(file_path, 'rb') as f:
-                for block in iter(lambda: f.read(block_size), b''):
+            with open(file_path, "rb") as f:
+                for block in iter(lambda: f.read(block_size), b""):
                     sha256.update(block)
             return sha256.hexdigest()
         except OSError:
             return None
 
-    def scan_directory(self, path: str, excluded_files: list[str] = None) -> Generator[Tuple[str, Dict[str, Any]], None, None]:
+    def scan_directory(
+        self, path: str, excluded_files: list[str] = None
+    ) -> Generator[Tuple[str, Dict[str, Any]], None, None]:
         if excluded_files is None:
             excluded_files = []
         excluded_set = set(os.path.abspath(f) for f in excluded_files)
@@ -29,7 +31,7 @@ class FileScanner:
         for root, dirs, files in os.walk(path):
             # Filter directories
             # TODO: Implement proper ignore pattern logic (like .gitignore)
-            
+
             for file in files:
                 file_path = os.path.join(root, file)
                 abs_path = os.path.abspath(file_path)
