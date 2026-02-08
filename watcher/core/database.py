@@ -1,7 +1,8 @@
-import sqlite3
 import os
+import sqlite3
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+
 
 class FileRegistry:
     def __init__(self, db_path: str = "file_registry.db"):

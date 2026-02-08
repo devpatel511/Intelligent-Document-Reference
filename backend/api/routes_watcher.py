@@ -1,18 +1,19 @@
 """Watcher endpoints (manage watched paths)."""
+import os
+import sys
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
+
 from backend.schemas import WatchPathRequest, WatchPathResponse
+
 # Assuming the app is run from root, we can import watcher
 try:
     from watcher.core.database import FileRegistry
 except ImportError:
     # Fallback for when running backend isolation without watcher pkg
-    import sys
-    import os
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))  
     from watcher.core.database import FileRegistry
-
-import os
-
 router = APIRouter(prefix="/watcher", tags=["watcher"])
 
 # Initialize DB connection (lightweight)

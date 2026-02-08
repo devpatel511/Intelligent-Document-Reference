@@ -1,9 +1,11 @@
-import platform
 import logging
+import platform
 from abc import ABC, abstractmethod
 from typing import Callable, List
-from watchdog.observers import Observer
+
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
 
 class BaseWatcher(ABC):
     def __init__(self, callback: Callable):

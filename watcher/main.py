@@ -1,11 +1,13 @@
-import time
 import logging
-import sys
 import os
+import sys
 import threading
+import time
+
+from adapters import get_watcher
+
 from core.database import FileRegistry
 from core.scanner import FileScanner
-from adapters import get_watcher
 
 # Determine the directory where the application is running
 if getattr(sys, 'frozen', False):

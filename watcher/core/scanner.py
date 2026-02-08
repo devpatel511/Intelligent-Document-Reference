@@ -1,8 +1,9 @@
-import os
 import hashlib
-import time
-from typing import Generator, Tuple, Dict, Any
 import logging
+import os
+import time
+from typing import Any, Dict, Generator, Tuple
+
 
 class FileScanner:
     def __init__(self, root_paths: list[str], ignore_patterns: list[str] = None):

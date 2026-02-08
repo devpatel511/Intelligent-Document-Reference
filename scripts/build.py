@@ -1,6 +1,8 @@
-import PyInstaller.__main__
 import os
 import shutil
+
+import PyInstaller.__main__
+
 
 def build_executable():
     # Define paths

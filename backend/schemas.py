@@ -1,7 +1,8 @@
 """Pydantic request/response schemas (stubs)."""
 
-from pydantic import BaseModel
 from typing import List, Optional
+
+from pydantic import BaseModel
 
 
 class WatchPathRequest(BaseModel):
