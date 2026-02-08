@@ -1,6 +1,27 @@
+# Python virtual environment
 .venv/
+
+# Python cache
 __pycache__/
+*.py[cod]
+.python-version
+
+# Pytest cache
 .pytest_cache/
+
+# ruff cache
+.ruff_cache/
+
+# Data and environment
 data/
 .env
 /node_modules
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/
+
+# GitHub
+.github/

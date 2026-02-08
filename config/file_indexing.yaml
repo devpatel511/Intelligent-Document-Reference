@@ -1,0 +1,18 @@
+inclusion:
+  files:
+  - w6-lead-TA-materials/nested_list.py
+  - w6-lead-TA-materials/tracing_recursion_scanned.pdf
+  - w6-lead-TA-materials/nested_list_mutation_scanned.pdf
+  - w6-lead-TA-materials/recursive_patterns_scanned.pdf
+  directories:
+  - w6-lead-TA-materials
+exclusion:
+  files: []
+  directories: []
+  patterns: []
+context:
+  files:
+  - w6-lead-TA-materials/nested_list.py
+  - w6-lead-TA-materials/tracing_recursion_scanned.pdf
+  - w6-lead-TA-materials/nested_list_mutation_scanned.pdf
+  - w6-lead-TA-materials/recursive_patterns_scanned.pdf

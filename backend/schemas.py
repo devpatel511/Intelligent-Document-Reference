@@ -9,5 +9,3 @@ class WatchPathRequest(BaseModel):
 class WatchPathResponse(BaseModel):
     status: str
     active_paths: List[dict]
-
-
