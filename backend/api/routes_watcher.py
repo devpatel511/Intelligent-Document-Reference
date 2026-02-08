@@ -42,7 +42,8 @@ async def add_watch_path(req: WatchPathRequest):
 async def get_watch_paths():
     return {"active_paths": registry.get_watch_paths()}
 
-@router.delete("/path/{path_id}")
-async def remove_watch_path(path_id: int):
-    registry.remove_watch_path_by_id(path_id)
+@router.delete("/path", response_model=WatchPathResponse)
+async def remove_watch_path_by_path(req: WatchPathRequest):
+    clean_path = os.path.abspath(os.path.expanduser(req.path))
+    registry.remove_watch_path(clean_path)
     return {"status": "removed", "active_paths": registry.get_watch_paths()}
