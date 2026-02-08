@@ -1,5 +1,4 @@
 """FastAPI app entrypoint."""
-
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -7,7 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api import routes_chat, routes_files, routes_jobs, routes_settings, routes_watcher
+from backend.api import (
+    routes_chat,
+    routes_files,
+    routes_jobs,
+    routes_settings,
+    routes_watcher,
+)
 
 app = FastAPI(title="local-rag-backend")
 
