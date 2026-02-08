@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+
 from model_clients.voyage_client import VoyageEmbeddingClient
 
 

@@ -263,6 +263,7 @@ def main():
         # Import dependencies only when needed (after setup)
         try:
             import uvicorn
+
             from backend.main import app
         except ImportError as e:
             print(f"ERROR: Required dependencies not installed: {e}")

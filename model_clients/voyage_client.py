@@ -4,8 +4,9 @@ import os
 from typing import List, Optional, Union
 
 import PIL.Image
-from config.settings import load_settings
 from dotenv import load_dotenv
+
+from config.settings import load_settings
 
 from .base import EmbeddingClient
 
