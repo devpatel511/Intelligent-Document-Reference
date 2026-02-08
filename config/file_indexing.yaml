@@ -1,18 +1,22 @@
+# File indexing configuration
+# This file is managed by the UI and defines which files are included/excluded
+
 inclusion:
-  files:
-  - w6-lead-TA-materials/nested_list.py
-  - w6-lead-TA-materials/tracing_recursion_scanned.pdf
-  - w6-lead-TA-materials/nested_list_mutation_scanned.pdf
-  - w6-lead-TA-materials/recursive_patterns_scanned.pdf
-  directories:
-  - w6-lead-TA-materials
-exclusion:
+  # List of file paths to include in indexing
   files: []
+  # List of directory paths to include (all files within)
   directories: []
+
+exclusion:
+  # List of file paths to exclude from indexing
+  files: []
+  # List of directory paths to exclude (all files within)
+  directories: []
+  # Exclusion patterns (wildcards, extensions, etc.)
   patterns: []
+
 context:
-  files:
-  - w6-lead-TA-materials/nested_list.py
-  - w6-lead-TA-materials/tracing_recursion_scanned.pdf
-  - w6-lead-TA-materials/nested_list_mutation_scanned.pdf
-  - w6-lead-TA-materials/recursive_patterns_scanned.pdf
+  # List of file paths selected for current conversation context
+  # Only leaf files (not directories) should be here
+  files: []
+
