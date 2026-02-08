@@ -1,9 +1,9 @@
-"""Unified Python formatter: runs isort, Black, and ruff fix in one command.
+"""Unified Python formatter: runs usort, isort, Black, and ruff in one command.
 
 Usage:
-    python scripts/cspyformatter.py [paths...]       # format specific files/dirs
+    python scripts/cspyformatter.py [paths...]       # format specific files/dirs (usort/isort/black/ruff)
     python scripts/cspyformatter.py                   # format entire project
-    python scripts/cspyformatter.py --check           # check-only mode (CI)
+    python scripts/cspyformatter.py --check           # check-only mode (CI: usort/isort/black/ruff)
 """
 
 import shutil
@@ -38,8 +38,13 @@ def _find_tool(name: str) -> str:
     sys.exit(1)
 
 
-# Steps run in order: isort (imports) → black (formatting) → ruff (lint autofix)
+# Steps run in order: usort → isort (imports) → black (formatting) → ruff (lint)
 STEPS = [
+    {
+        "name": "usort",
+        "format": [_find_tool("usort"), "format"],
+        "check": [_find_tool("usort"), "check"],
+    },
     {
         "name": "isort",
         "format": [_find_tool("isort"), "--profile", "black"],
@@ -54,6 +59,11 @@ STEPS = [
         "name": "ruff",
         "format": [_find_tool("ruff"), "check", "--fix"],
         "check": [_find_tool("ruff"), "check"],
+    },
+    {
+        "name": "ruff-unused",
+        "format": [_find_tool("ruff"), "check", "--select", "F401", "--fix"],
+        "check": [_find_tool("ruff"), "check", "--select", "F401"],
     },
 ]
 

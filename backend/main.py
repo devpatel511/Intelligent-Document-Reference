@@ -7,7 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api import routes_chat, routes_files, routes_jobs, routes_settings
+from backend.api import (
+    routes_chat,
+    routes_files,
+    routes_jobs,
+    routes_settings,
+    routes_watcher,
+)
 
 app = FastAPI(title="local-rag-backend")
 
@@ -25,6 +31,7 @@ app.include_router(routes_chat.router)
 app.include_router(routes_files.router)
 app.include_router(routes_jobs.router)
 app.include_router(routes_settings.router)
+app.include_router(routes_watcher.router)
 
 # Serve static files from the frontend build
 # Note: API routes are registered above, so they take precedence
