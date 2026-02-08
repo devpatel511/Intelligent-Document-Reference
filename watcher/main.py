@@ -4,10 +4,10 @@ import sys
 import threading
 import time
 
-from adapters import get_watcher
+from watcher.adapters import get_watcher
 
-from core.database import FileRegistry
-from core.scanner import FileScanner
+from watcher.core.database import FileRegistry
+from watcher.core.scanner import FileScanner
 
 # Determine the directory where the application is running
 if getattr(sys, "frozen", False):
