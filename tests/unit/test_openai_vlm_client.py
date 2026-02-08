@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from model_clients.openai_client import OpenAIInferenceClient
 
 

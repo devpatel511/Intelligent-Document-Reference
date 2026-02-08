@@ -5,7 +5,6 @@ import threading
 import time
 
 from watcher.adapters import get_watcher
-
 from watcher.core.database import FileRegistry
 from watcher.core.scanner import FileScanner
 
