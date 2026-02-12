@@ -75,6 +75,7 @@ def _get_encoder() -> Optional[Any]:
     if _tiktoken_encoder is None:
         try:
             import tiktoken
+
             _tiktoken_encoder = tiktoken.get_encoding("cl100k_base")
         except Exception:
             pass
@@ -158,7 +159,9 @@ class StructuredDocument:
         return out
 
 
-def file_metadata_from_path(path: Path, base_path: Optional[Path] = None) -> FileMetadata:
+def file_metadata_from_path(
+    path: Path, base_path: Optional[Path] = None
+) -> FileMetadata:
     """Build FileMetadata from a file path. Uses stat for size/mtime."""
     try:
         stat = path.stat()

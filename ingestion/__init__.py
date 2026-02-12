@@ -19,6 +19,7 @@ from ingestion.models import (
     file_metadata_from_path,
 )
 from ingestion.ocr import OCRProvider, OCRResult, TesseractOCRProvider
+from ingestion.orchestrator import parse_and_prepare, parse_and_prepare_batch
 from ingestion.parser import (
     CodeInput,
     ImageInput,
@@ -28,7 +29,6 @@ from ingestion.parser import (
     TextInput,
     get_input_handler,
 )
-from ingestion.orchestrator import parse_and_prepare, parse_and_prepare_batch
 from ingestion.preprocessing import preprocess
 
 __all__ = [

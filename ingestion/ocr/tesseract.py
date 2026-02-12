@@ -1,7 +1,11 @@
 """Tesseract-based OCR provider."""
 
-from pathlib import Path
-from typing import Optional, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional, Union
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 from .base import OCRProvider, OCRResult
 
@@ -19,7 +23,7 @@ class TesseractOCRProvider(OCRProvider):
 
     def extract_text(
         self,
-        image: Union[str, bytes, "PIL.Image.Image"],
+        image: Union[str, bytes, Image.Image],
         source_location: Optional[str] = None,
     ) -> OCRResult:
         """Extract text from an image using Tesseract."""
@@ -37,12 +41,15 @@ class TesseractOCRProvider(OCRProvider):
             pil_image = Image.open(image)
         elif isinstance(image, bytes):
             from io import BytesIO
+
             pil_image = Image.open(BytesIO(image))
         else:
             pil_image = image
 
         text = pytesseract.image_to_string(pil_image, lang=self._lang)
-        data = pytesseract.image_to_data(pil_image, lang=self._lang, output_type=pytesseract.Output.DICT)
+        data = pytesseract.image_to_data(
+            pil_image, lang=self._lang, output_type=pytesseract.Output.DICT
+        )
 
         confidence: Optional[float] = None
         confs = [int(c) for c in data.get("conf", []) if c != "-1"]

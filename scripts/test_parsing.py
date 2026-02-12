@@ -18,8 +18,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from ingestion import parse_and_prepare, get_input_handler, IngestionConfig
-from ingestion.ocr import TesseractOCRProvider
+from ingestion import (  # noqa: E402
+    IngestionConfig,
+    get_input_handler,
+    parse_and_prepare,
+)
+from ingestion.ocr import TesseractOCRProvider  # noqa: E402
 
 SAMPLE_FILES_DIR = PROJECT_ROOT / "ingestion" / "sample_files"
 
@@ -29,7 +33,11 @@ TRUNCATE_BLOCK_CONTENT = 400
 
 def collect_sample_files() -> list[Path]:
     exts = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".py", ".txt", ".md"}
-    files = [p for p in SAMPLE_FILES_DIR.rglob("*") if p.is_file() and p.suffix.lower() in exts]
+    files = [
+        p
+        for p in SAMPLE_FILES_DIR.rglob("*")
+        if p.is_file() and p.suffix.lower() in exts
+    ]
     return sorted(files)
 
 
@@ -47,10 +55,16 @@ def structure_for_output(doc_dict: dict) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Test ingestion parsing; output structure (dict/JSON) per file")
-    parser.add_argument("--ocr", action="store_true", help="Enable OCR (requires pytesseract)")
+    parser = argparse.ArgumentParser(
+        description="Test ingestion parsing; output structure (dict/JSON) per file"
+    )
+    parser.add_argument(
+        "--ocr", action="store_true", help="Enable OCR (requires pytesseract)"
+    )
     parser.add_argument("--path", type=str, help="Single file path")
-    parser.add_argument("--no-truncate", action="store_true", help="Do not truncate block content")
+    parser.add_argument(
+        "--no-truncate", action="store_true", help="Do not truncate block content"
+    )
     args = parser.parse_args()
 
     global TRUNCATE_BLOCK_CONTENT
@@ -81,7 +95,13 @@ def main() -> int:
     for path in paths:
         try:
             handler = get_input_handler(path)
-            doc = parse_and_prepare(handler, path, ocr_provider=ocr_provider, config=config, base_path=PROJECT_ROOT)
+            doc = parse_and_prepare(
+                handler,
+                path,
+                ocr_provider=ocr_provider,
+                config=config,
+                base_path=PROJECT_ROOT,
+            )
             doc_dict = doc.to_dict()
             out = structure_for_output(doc_dict)
             print("\n" + "=" * 80)

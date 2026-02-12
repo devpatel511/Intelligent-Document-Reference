@@ -68,7 +68,9 @@ def parse_and_prepare_batch(
         else (getattr(config, "max_workers", None) or 4)
     )
 
-    def process_one(idx: int, doc: InputDocument, src: Union[str, Path, BinaryIO, InputSource]) -> tuple[int, StructuredDocument]:
+    def process_one(
+        idx: int, doc: InputDocument, src: Union[str, Path, BinaryIO, InputSource]
+    ) -> tuple[int, StructuredDocument]:
         result = parse_and_prepare(
             document=doc,
             source=src,
@@ -81,8 +83,7 @@ def parse_and_prepare_batch(
     results: dict[int, StructuredDocument] = {}
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = {
-            ex.submit(process_one, i, doc, src): i
-            for i, (doc, src) in enumerate(items)
+            ex.submit(process_one, i, doc, src): i for i, (doc, src) in enumerate(items)
         }
         for future in as_completed(futures):
             idx, doc = future.result()

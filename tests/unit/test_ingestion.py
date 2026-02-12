@@ -1,21 +1,20 @@
 """Unit tests for the ingestion pipeline."""
 
-import pytest
 from pathlib import Path
 
 from ingestion import (
-    parse_and_prepare,
-    get_input_handler,
-    TextInput,
     CodeInput,
     IngestionConfig,
+    TextInput,
+    get_input_handler,
+    parse_and_prepare,
 )
 from ingestion.models import (
-    StructuredDocument,
-    ContentBlock,
     BlockType,
-    SourceModality,
+    ContentBlock,
     ExtractionMethod,
+    SourceModality,
+    StructuredDocument,
 )
 
 
@@ -36,7 +35,7 @@ def test_text_input_parses_file(tmp_path: Path) -> None:
 def test_code_input_parses_file(tmp_path: Path) -> None:
     """CodeInput parses code files."""
     f = tmp_path / "test.py"
-    f.write_text('def foo():\n    return 42', encoding="utf-8")
+    f.write_text("def foo():\n    return 42", encoding="utf-8")
 
     doc = parse_and_prepare(CodeInput(), str(f), config=IngestionConfig())
     assert doc.source_modality == SourceModality.CODE

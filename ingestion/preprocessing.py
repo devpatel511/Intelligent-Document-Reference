@@ -7,7 +7,6 @@ Parsing, preprocessing, and chunking remain strictly separated.
 
 import re
 import unicodedata
-from typing import Optional
 
 from ingestion.models import (
     BlockMetadata,
@@ -36,7 +35,9 @@ def _clean_ocr_artifacts(text: str) -> str:
     # Fix hyphenation at line breaks: "word-\nnext" -> "word\nnext"
     text = re.sub(r"(\w)-\s*\n\s*(\w)", r"\1\2", text)
     # Remove stray control characters
-    text = "".join(c for c in text if unicodedata.category(c)[0] != "C" or c in "\n\r\t")
+    text = "".join(
+        c for c in text if unicodedata.category(c)[0] != "C" or c in "\n\r\t"
+    )
     return text
 
 

@@ -3,7 +3,7 @@
 Concurrency, OCR, and LLM settings are bounded and configurable.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
