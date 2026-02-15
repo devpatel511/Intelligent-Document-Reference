@@ -28,8 +28,8 @@ def bootstrap() -> AppContext:
     job_queue = JobQueue(db_path=settings.unified_db_path)
     ctx.job_queue = job_queue
 
-    scheduler = Scheduler(job_queue)
+    ctx.scheduler = Scheduler(job_queue)
     registry = FileRegistry(db_path=settings.watcher_db_path)
-    ctx.watcher = FileTrackingService(registry=registry, scheduler=scheduler)
+    ctx.watcher = FileTrackingService(registry=registry, scheduler=ctx.scheduler)
 
     return ctx

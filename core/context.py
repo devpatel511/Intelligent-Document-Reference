@@ -15,4 +15,5 @@ class AppContext:
     embedding_client: Optional[Any] = None
     inference_client: Optional[Any] = None
     job_queue: Optional[Any] = None
+    scheduler: Optional[Any] = None
     watcher: Optional[Any] = None

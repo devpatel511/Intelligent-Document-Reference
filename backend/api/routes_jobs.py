@@ -12,7 +12,6 @@ from backend.deps import get_context
 from backend.schemas import JobEnqueueRequest, JobListResponse, JobResponse
 from core.context import AppContext
 from jobs.queue import Job
-from jobs.scheduler import Scheduler
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -28,11 +27,10 @@ async def enqueue_job(
     ctx: AppContext = Depends(get_context),
 ):
     """Enqueue an indexing job (called by the Web UI)."""
-    if ctx.job_queue is None:
-        raise HTTPException(status_code=503, detail="Job queue not initialized")
+    if ctx.scheduler is None:
+        raise HTTPException(status_code=503, detail="Scheduler not initialized")
 
-    scheduler = Scheduler(ctx.job_queue)
-    job = scheduler.schedule(
+    job = ctx.scheduler.schedule(
         file_path=req.file_path,
         source=req.source,
         priority=req.priority,
