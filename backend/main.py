@@ -1,5 +1,7 @@
 """FastAPI app entrypoint."""
 
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -14,8 +16,46 @@ from backend.api import (
     routes_settings,
     routes_watcher,
 )
+from backend.deps import get_context
+from ingestion.pipeline import run_index
+from jobs.worker import Worker
 
-app = FastAPI(title="local-rag-backend")
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Start the job worker and file watcher on startup; stop on shutdown."""
+    ctx = get_context()
+    worker = None
+
+    if ctx and ctx.job_queue:
+        poll_interval = getattr(ctx.settings, "worker_poll_interval", 2.0)
+        worker = Worker(
+            queue=ctx.job_queue,
+            processor=run_index,
+            ctx=ctx,
+            poll_interval=poll_interval,
+        )
+        await worker.start()
+        logger.info("Job worker started via lifespan")
+
+    if ctx and ctx.watcher:
+        ctx.watcher.start_background()
+        logger.info("File watcher started via lifespan")
+
+    yield
+
+    if ctx and ctx.watcher:
+        ctx.watcher.stop()
+        logger.info("File watcher stopped via lifespan")
+
+    if worker:
+        await worker.stop()
+        logger.info("Job worker stopped via lifespan")
+
+
+app = FastAPI(title="local-rag-backend", lifespan=lifespan)
 
 # Add CORS middleware
 app.add_middleware(

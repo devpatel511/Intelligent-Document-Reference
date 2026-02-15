@@ -1,27 +1,12 @@
-"""DB-backed job queue with priority ordering and deduplication.
-
-Uses a standalone SQLite database (``jobs.db``) so the queue survives
-process restarts without depending on ``sqlite-vec`` (which is only
-needed by the RAG database).
-
-Deduplication: ``file_path`` has a UNIQUE constraint.  Enqueueing a path
-that already exists updates the priority / source / timestamp instead
-of creating a duplicate row.
-
-Priority: UI-sourced jobs default to ``priority=10``, watcher jobs to
-``priority=1``.  ``dequeue()`` selects the highest-priority queued row
-(ties broken by oldest ``created_at``).
-"""
+"""DB-backed job queue with priority ordering and deduplication."""
 
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List, Optional
 
-
-# ---------------------------------------------------------------------------
-# Data transfer object
-# ---------------------------------------------------------------------------
+PRIORITY_WATCHER = 1
+PRIORITY_UI = 10
 
 
 @dataclass
@@ -40,46 +25,29 @@ class Job:
     updated_at: str
 
 
-# ---------------------------------------------------------------------------
-# Priority constants
-# ---------------------------------------------------------------------------
-
-PRIORITY_WATCHER: int = 1
-PRIORITY_UI: int = 10
-
-
-# ---------------------------------------------------------------------------
-# Queue implementation
-# ---------------------------------------------------------------------------
-
-
 class JobQueue:
-    """SQLite-backed FIFO-with-priority job queue."""
+    """SQLite-backed FIFO-with-priority job queue.
 
-    def __init__(self, db_path: str = "jobs.db") -> None:
+    Shares the same database file as ``UnifiedDatabase`` but opens its
+    own plain ``sqlite3`` connections (no sqlite-vec extension loaded).
+    """
+
+    def __init__(self, db_path: str) -> None:
         self.db_path = db_path
-        self._init_db()
-
-    # -- connection helpers --------------------------------------------------
+        self._ensure_table()
 
     def _get_conn(self) -> sqlite3.Connection:
-        """Create and configure a new SQLite connection.
-
-        Returns:
-            A configured sqlite3.Connection with Row factory.
-        """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
-    def _init_db(self) -> None:
+    def _ensure_table(self) -> None:
         """Create the jobs table if it does not exist."""
         conn = self._get_conn()
         try:
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS jobs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     file_path TEXT UNIQUE NOT NULL,
@@ -92,13 +60,14 @@ class JobQueue:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-            """
-            )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_jobs_status_priority
+                    ON jobs (status, priority DESC, created_at ASC)
+            """)
             conn.commit()
         finally:
             conn.close()
-
-    # -- helpers -------------------------------------------------------------
 
     @staticmethod
     def _row_to_job(row: sqlite3.Row) -> Job:
@@ -109,8 +78,6 @@ class JobQueue:
     def _now() -> str:
         """Return current UTC timestamp as ISO string."""
         return datetime.now(timezone.utc).isoformat()
-
-    # -- public API ----------------------------------------------------------
 
     def enqueue(
         self,
@@ -240,9 +207,7 @@ class JobQueue:
                 (now, job_id),
             )
             conn.commit()
-            row = conn.execute(
-                "SELECT * FROM jobs WHERE id = ?", (job_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
             return self._row_to_job(row)
         finally:
             conn.close()
@@ -264,9 +229,7 @@ class JobQueue:
         now = self._now()
         conn = self._get_conn()
         try:
-            row = conn.execute(
-                "SELECT * FROM jobs WHERE id = ?", (job_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
             if row is None:
                 raise ValueError(f"Job {job_id} not found")
 
@@ -296,8 +259,6 @@ class JobQueue:
         finally:
             conn.close()
 
-    # -- query helpers -------------------------------------------------------
-
     def get_job(self, job_id: int) -> Optional[Job]:
         """Fetch a single job by id.
 
@@ -309,9 +270,7 @@ class JobQueue:
         """
         conn = self._get_conn()
         try:
-            row = conn.execute(
-                "SELECT * FROM jobs WHERE id = ?", (job_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
             return self._row_to_job(row) if row else None
         finally:
             conn.close()

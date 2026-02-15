@@ -1,4 +1,4 @@
-"""Pydantic request/response schemas (stubs)."""
+"""Pydantic request/response schemas."""
 
 from typing import List, Optional
 
@@ -13,3 +13,33 @@ class WatchPathRequest(BaseModel):
 class WatchPathResponse(BaseModel):
     status: str
     active_paths: List[dict]
+
+
+class JobEnqueueRequest(BaseModel):
+    """Request body for POST /jobs/enqueue."""
+
+    file_path: str
+    source: str = Field(default="ui", pattern="^(ui|watcher)$")
+    priority: Optional[int] = None
+
+
+class JobResponse(BaseModel):
+    """Single job representation returned by the API."""
+
+    id: int
+    file_path: str
+    source: str
+    priority: int
+    status: str
+    attempts: int
+    max_attempts: int
+    error_message: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class JobListResponse(BaseModel):
+    """Response for GET /jobs/."""
+
+    jobs: List[JobResponse]
+    total: int
