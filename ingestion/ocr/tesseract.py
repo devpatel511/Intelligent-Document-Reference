@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional, Union
 if TYPE_CHECKING:
     from PIL import Image
 
-from .base import OCRProvider, OCRResult
+from ingestion.ocr import OCRProvider, OCRResult
 
 
 class TesseractOCRProvider(OCRProvider):

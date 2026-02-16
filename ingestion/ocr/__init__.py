@@ -1,6 +1,6 @@
 """OCR abstraction layer."""
 
-from .base import OCRProvider, OCRResult
-from .tesseract import TesseractOCRProvider
+from ingestion.ocr.base import OCRProvider, OCRResult
+from ingestion.ocr.tesseract import TesseractOCRProvider
 
 __all__ = ["OCRProvider", "OCRResult", "TesseractOCRProvider"]

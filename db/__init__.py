@@ -1,3 +1,3 @@
-from .unified import UnifiedDatabase
+from db.unified import UnifiedDatabase
 
 __all__ = ["UnifiedDatabase"]
