@@ -5,7 +5,7 @@ import logging
 from typing import Callable, Optional
 
 from core.context import AppContext
-from jobs import JobQueue
+from jobs import JobQueue, transition_state
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +69,18 @@ class Worker:
 
                 try:
                     await asyncio.to_thread(self._processor, job.file_path, self._ctx)
-                    await asyncio.to_thread(self._queue.complete, job.id)
+                    await asyncio.to_thread(
+                        transition_state, self._queue, job.id, "completed"
+                    )
                     logger.info("Job %d completed", job.id)
                 except Exception as exc:
                     error_msg = f"{type(exc).__name__}: {exc}"
                     updated = await asyncio.to_thread(
-                        self._queue.fail, job.id, error_msg
+                        transition_state,
+                        self._queue,
+                        job.id,
+                        "failed",
+                        error_msg,
                     )
                     if updated.status == "queued":
                         logger.warning(

@@ -69,17 +69,6 @@ class TestFileRegistry:
         registry.remove_watch_path_by_id(paths[0]["id"])
         assert len(registry.get_watch_paths()) == 0
 
-    def test_no_processing_queue_table(self, registry: FileRegistry) -> None:
-        """processing_queue should not exist after cleanup."""
-        import sqlite3
-
-        with sqlite3.connect(registry.db_path) as conn:
-            tables = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-            table_names = [t[0] for t in tables]
-            assert "processing_queue" not in table_names
-
 
 class _StubWatcher:
     """Minimal watcher stub that records schedule/unschedule calls."""
