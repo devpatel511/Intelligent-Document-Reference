@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from jobs.queue import Job, JobQueue
+from jobs import Job, JobQueue
 
 
 def transition_state(

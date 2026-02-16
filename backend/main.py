@@ -18,7 +18,7 @@ from backend.api import (
 )
 from backend.deps import get_context
 from ingestion.pipeline import run_index
-from jobs.worker import Worker
+from jobs import Worker
 
 logger = logging.getLogger(__name__)
 

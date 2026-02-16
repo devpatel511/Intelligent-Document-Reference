@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Optional
 
-from jobs.queue import PRIORITY_UI, PRIORITY_WATCHER, Job, JobQueue
+from jobs import PRIORITY_UI, PRIORITY_WATCHER, Job, JobQueue
 
 logger = logging.getLogger(__name__)
 

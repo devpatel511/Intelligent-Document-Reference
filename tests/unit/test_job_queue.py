@@ -6,10 +6,16 @@ from typing import Generator, List
 
 import pytest
 
-from jobs.queue import PRIORITY_UI, PRIORITY_WATCHER, Job, JobQueue
-from jobs.scheduler import Scheduler
-from jobs.state import should_retry, transition_state
-from jobs.worker import Worker
+from jobs import (
+    PRIORITY_UI,
+    PRIORITY_WATCHER,
+    Job,
+    JobQueue,
+    Scheduler,
+    Worker,
+    should_retry,
+    transition_state,
+)
 
 
 @pytest.fixture

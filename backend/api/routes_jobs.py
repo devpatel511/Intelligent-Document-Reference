@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.deps import get_context
 from backend.schemas import JobEnqueueRequest, JobListResponse, JobResponse
 from core.context import AppContext
-from jobs.queue import Job
+from jobs import Job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 

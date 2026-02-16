@@ -6,8 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jobs.queue import PRIORITY_WATCHER, JobQueue
-from jobs.scheduler import Scheduler
+from jobs import PRIORITY_WATCHER, JobQueue, Scheduler
 from watcher import FileRegistry, FileTrackingService
 
 

@@ -5,7 +5,7 @@ import logging
 from typing import Callable, Optional
 
 from core.context import AppContext
-from jobs.queue import JobQueue
+from jobs import JobQueue
 
 logger = logging.getLogger(__name__)
 

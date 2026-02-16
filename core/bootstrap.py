@@ -2,9 +2,8 @@
 
 from config.settings import load_settings
 from core.context import AppContext
-from db.unified import UnifiedDatabase
-from jobs.queue import JobQueue
-from jobs.scheduler import Scheduler
+from db import UnifiedDatabase
+from jobs import JobQueue, Scheduler
 from model_clients.registry import ClientRegistry
 from watcher import FileRegistry, FileTrackingService
 
