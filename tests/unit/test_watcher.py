@@ -6,9 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from watcher.core.database import FileRegistry
-from watcher.core.scanner import FileScanner
-from watcher.service import FileTrackingService
+from watcher import FileRegistry, FileScanner, FileTrackingService
 
 
 @pytest.fixture

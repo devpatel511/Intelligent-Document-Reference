@@ -7,8 +7,7 @@ import PIL.Image
 from dotenv import load_dotenv
 
 from config.settings import load_settings
-
-from .base import EmbeddingClient
+from model_clients.base import EmbeddingClient
 
 # Load environment variables from .env file
 load_dotenv()

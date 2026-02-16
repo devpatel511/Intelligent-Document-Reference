@@ -8,8 +8,7 @@ import pytest
 
 from jobs.queue import PRIORITY_WATCHER, JobQueue
 from jobs.scheduler import Scheduler
-from watcher.core.database import FileRegistry
-from watcher.service import FileTrackingService
+from watcher import FileRegistry, FileTrackingService
 
 
 @pytest.fixture

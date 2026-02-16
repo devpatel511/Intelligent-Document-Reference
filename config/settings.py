@@ -14,8 +14,6 @@ load_dotenv()
 
 @dataclass
 class Settings:
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/metadata.db")
-    vector_db_path: str = os.getenv("VECTOR_DB_PATH", "./data/vectorstore")
     unified_db_path: str = os.getenv("UNIFIED_DB_PATH", "local_search.db")
     watcher_db_path: str = os.getenv("WATCHER_DB_PATH", "file_registry.db")
     ollama_url: str = os.getenv("OLLAMA_URL", "http://localhost:11434")

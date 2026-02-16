@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.deps import get_context
 from backend.schemas import WatchPathRequest, WatchPathResponse
 from core.context import AppContext
-from watcher.core.database import FileRegistry
+from watcher import FileRegistry
 
 router = APIRouter(prefix="/watcher", tags=["watcher"])
 

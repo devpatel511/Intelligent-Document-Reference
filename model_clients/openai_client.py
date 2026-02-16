@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 import PIL.Image
 from dotenv import load_dotenv
 
-from .base import EmbeddingClient, InferenceClient
+from model_clients.base import EmbeddingClient, InferenceClient
 
 # Load environment variables from .env file
 load_dotenv()

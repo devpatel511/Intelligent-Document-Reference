@@ -6,9 +6,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Set
 
-from watcher.adapters import BaseWatcher, get_watcher
-from watcher.core.database import FileRegistry
-from watcher.core.scanner import FileScanner
+from watcher import BaseWatcher, FileRegistry, FileScanner, get_watcher
 
 logger = logging.getLogger(__name__)
 

@@ -1,14 +1,12 @@
 """Bootstrap subsystem initializers and return AppContext."""
 
 from config.settings import load_settings
+from core.context import AppContext
 from db.unified import UnifiedDatabase
 from jobs.queue import JobQueue
 from jobs.scheduler import Scheduler
 from model_clients.registry import ClientRegistry
-from watcher.core.database import FileRegistry
-from watcher.service import FileTrackingService
-
-from .context import AppContext
+from watcher import FileRegistry, FileTrackingService
 
 
 def bootstrap() -> AppContext:

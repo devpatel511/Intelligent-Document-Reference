@@ -4,11 +4,10 @@ TODO: wire correct auth and model selection from config/models.yaml
 """
 
 from config.settings import load_settings
-
-from .google_client import GoogleEmbeddingClient
-from .ollama_client import OllamaClient
-from .openai_client import OpenAIInferenceClient
-from .voyage_client import VoyageEmbeddingClient
+from model_clients.google_client import GoogleEmbeddingClient
+from model_clients.ollama_client import OllamaClient
+from model_clients.openai_client import OpenAIInferenceClient
+from model_clients.voyage_client import VoyageEmbeddingClient
 
 
 class ClientRegistry:
