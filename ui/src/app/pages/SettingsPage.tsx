@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatContext } from '@/app/contexts/ChatContext';
 import { FileNavigator } from '@/app/components/FileNavigator';
@@ -34,6 +34,9 @@ export function SettingsPage() {
     userInfo,
     setUserInfo,
     importFolder,
+    setWatcherPath,
+    addWatcherPath,
+    watcherPath,
     indexedFiles,
     indexedDirectories,
     excludedFiles,
@@ -47,8 +50,30 @@ export function SettingsPage() {
     removeExcludedDirectory,
     saveFileIndexingConfig,
   } = useChatContext();
-  
+
   const [isSaving, setIsSaving] = useState(false);
+  const [inclusionFolderPath, setInclusionFolderPath] = useState(watcherPath ?? '');
+  const [isSettingWatcher, setIsSettingWatcher] = useState(false);
+
+  useEffect(() => {
+    setInclusionFolderPath(watcherPath ?? '');
+  }, [watcherPath]);
+
+  const handleSetInclusionFolder = async () => {
+    if (!inclusionFolderPath.trim()) {
+      alert('Please enter a folder path.');
+      return;
+    }
+    setIsSettingWatcher(true);
+    try {
+      await setWatcherPath(inclusionFolderPath.trim());
+      alert('Inclusion folder set successfully. The watcher will use this path.');
+    } catch (err) {
+      alert(`Failed to set inclusion folder: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setIsSettingWatcher(false);
+    }
+  };
 
   const handleFolderImport = async (type: 'inclusion' | 'exclusion') => {
     // Create a file input element
@@ -81,15 +106,16 @@ export function SettingsPage() {
       // Collect all selected files (only files, not directories)
       const inclusionFiles = indexedFiles.filter(f => !f.endsWith('/'));
       const exclusionFiles = excludedFiles.filter(f => !f.endsWith('/'));
-      
+      // Capture directories we're saving so we can sync to watcher even after state may reload
+      const directoriesToSave = [...indexedDirectories];
+
       // Get context files from indexed files that are selected
-      // For now, we'll use indexedFiles as context files (user selects in inclusion)
       const contextFiles = inclusionFiles;
-      
+
       const success = await saveFileIndexingConfig({
         inclusion: {
           files: inclusionFiles,
-          directories: indexedDirectories,
+          directories: directoriesToSave,
         },
         exclusion: {
           files: exclusionFiles,
@@ -100,7 +126,23 @@ export function SettingsPage() {
           files: contextFiles,
         },
       });
-      
+
+      // Sync every inclusion folder to watcher DB (monitor_config) so they all get watched
+      if (success && directoriesToSave.length > 0) {
+        const failed: string[] = [];
+        for (const dir of directoriesToSave) {
+          try {
+            await addWatcherPath(dir);
+          } catch (err) {
+            failed.push(dir);
+            console.warn(`Watcher path failed for ${dir}:`, err);
+          }
+        }
+        if (failed.length > 0) {
+          alert(`Configuration saved. Watcher could not add: ${failed.join(', ')}`);
+        }
+      }
+
       if (success) {
         alert('File indexing configuration saved successfully!');
       } else {
@@ -298,6 +340,31 @@ export function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Inclusion folder (watcher) — single path sent to backend */}
+                <div className="space-y-2">
+                  <Label htmlFor="inclusion-folder-path">Inclusion folder path</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Folder to watch for documents (absolute path). Only one folder is used.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      id="inclusion-folder-path"
+                      type="text"
+                      placeholder="/path/to/your/folder"
+                      value={inclusionFolderPath}
+                      onChange={(e) => setInclusionFolderPath(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleSetInclusionFolder}
+                      disabled={isSettingWatcher}
+                    >
+                      {isSettingWatcher ? 'Setting…' : 'Set inclusion folder'}
+                    </Button>
+                  </div>
+                </div>
+
                 {/* Inclusion List */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">

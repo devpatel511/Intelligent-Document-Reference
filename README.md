@@ -46,11 +46,15 @@ This will:
 4. Install Node.js dependencies in the `ui/` directory
 5. Build the frontend application
 
-After setup, you can launch the application with:
+After setup, launch the application using the **virtual environment's Python** (dependencies like `uvicorn` are installed there):
 
 ```bash
-python3 app.py --webui
+.venv/bin/python app.py --webui
 ```
+
+On Windows: `.venv\Scripts\python app.py --webui`
+
+Alternatively, activate the venv first (`source .venv/bin/activate` on macOS/Linux, or `.venv\Scripts\activate` on Windows), then run `python app.py --webui`.
 
 ### Manual Setup
 
@@ -115,7 +119,7 @@ The application will be available at `http://127.0.0.1:8000`
 You can specify a custom host and port:
 
 ```bash
-python3 app.py --webui --host 0.0.0.0 --port 8080
+.venv/bin/python app.py --webui --host 0.0.0.0 --port 8080
 ```
 
 ### Command Line Options
@@ -175,7 +179,7 @@ cd ..
 If port 8000 is already in use, specify a different port:
 
 ```bash
-python3 app.py --webui --port 8080
+.venv/bin/python app.py --webui --port 8080
 ```
 
 ### Frontend Not Loading
@@ -203,6 +207,30 @@ For backend development, you can run the FastAPI server directly:
 ```bash
 uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+### Testing the inclusion folder (watcher)
+
+1. **Start the backend** (from project root):
+   ```bash
+   .venv/bin/python app.py --webui
+   ```
+   Or for UI hot-reload: run the backend with `.venv/bin/uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000` and in another terminal run `cd ui && npm run dev` (UI on port 5173; set `VITE_API_BASE_URL=http://localhost:8000` if needed).
+
+2. **In the browser**: Open the app (e.g. http://127.0.0.1:8000 or http://localhost:5173), go to **Settings** → **File Indexing**.
+
+3. **Set the inclusion folder**: In "Inclusion folder path", enter an absolute path to a real folder (e.g. `/Users/you/Intelligent-Document-Reference-Winter2026` or `C:\path\to\project` on Windows). Click **Set inclusion folder**. You should see a success message.
+
+4. **Verify via API** (optional):
+   ```bash
+   curl -s http://localhost:8000/watcher/path
+   ```
+   You should see `active_paths` containing your path. To test POST directly:
+   ```bash
+   curl -s -X POST http://localhost:8000/watcher/path \
+     -H "Content-Type: application/json" \
+     -d '{"path":"/tmp/test_watch_folder","excluded_files":[]}'
+   ```
+   Use a path that exists on your machine; the backend returns 400 if the path does not exist.
 
 ### Project Structure
 

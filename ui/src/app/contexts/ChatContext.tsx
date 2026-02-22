@@ -66,6 +66,10 @@ interface ChatContextType {
   setDarkMode: (enabled: boolean) => void;
   setUserInfo: (info: string) => void;
   importFolder: (files: FileList, type: 'inclusion' | 'exclusion') => Promise<void>;
+  setWatcherPath: (path: string) => Promise<boolean>;
+  addWatcherPath: (path: string) => Promise<boolean>;
+  watcherPath: string | null;
+  loadWatcherPath: () => Promise<void>;
   saveFileIndexingConfig: (config: {
     inclusion?: { files?: string[]; directories?: string[] };
     exclusion?: { files?: string[]; directories?: string[]; patterns?: string[] };
@@ -99,6 +103,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [excludedDirectories, setExcludedDirectories] = useState<string[]>([]);
   const [exclusionPatterns, setExclusionPatterns] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [watcherPath, setWatcherPathState] = useState<string | null>(null);
   // General settings
   const [systemPrompt, setSystemPrompt] = useState<string>('You are a helpful AI assistant that provides accurate and detailed answers based on the provided context.');
   const [darkMode, setDarkMode] = useState<boolean>(false);
@@ -109,6 +114,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     loadFiles();
     loadContextFiles();
     loadFileIndexingConfig();
+    loadWatcherPath();
   }, []);
 
   const loadContextFiles = async () => {
@@ -150,6 +156,70 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Failed to load file indexing config:', error);
+    }
+  };
+
+  const loadWatcherPath = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/path`);
+      const data = await response.json();
+      const paths = data?.active_paths ?? [];
+      // Assume only 1 folder: use first path if any
+      setWatcherPathState(paths.length > 0 ? paths[0].path : null);
+    } catch (error) {
+      console.error('Failed to load watcher path:', error);
+      setWatcherPathState(null);
+    }
+  };
+
+  const setWatcherPath = async (path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) return false;
+    try {
+      // Remove existing path so we only have one folder
+      if (watcherPath) {
+        await fetch(`${API_BASE_URL}/watcher/path`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: watcherPath, excluded_files: [] }),
+        });
+      }
+      const response = await fetch(`${API_BASE_URL}/watcher/path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: trimmed, excluded_files: [] }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || response.statusText);
+      }
+      await loadWatcherPath();
+      return true;
+    } catch (error) {
+      console.error('Failed to set watcher path:', error);
+      throw error;
+    }
+  };
+
+  /** Add a path to the watcher without removing others (for syncing all inclusion folders). */
+  const addWatcherPath = async (path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) return false;
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: trimmed, excluded_files: [] }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || response.statusText);
+      }
+      await loadWatcherPath();
+      return true;
+    } catch (error) {
+      console.error('Failed to add watcher path:', error);
+      throw error;
     }
   };
 
@@ -402,6 +472,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setDarkMode,
         setUserInfo,
         importFolder,
+        setWatcherPath,
+        addWatcherPath,
+        watcherPath,
+        loadWatcherPath,
         saveFileIndexingConfig,
         loadFiles,
       }}
