@@ -11,8 +11,8 @@ from typing import Any, Optional
 class AppContext:
     settings: Any
     db: Optional[Any] = None
-    vectorstore: Optional[Any] = None
     embedding_client: Optional[Any] = None
     inference_client: Optional[Any] = None
     job_queue: Optional[Any] = None
+    scheduler: Optional[Any] = None
     watcher: Optional[Any] = None

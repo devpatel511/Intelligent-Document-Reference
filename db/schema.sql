@@ -65,7 +65,25 @@ CREATE TABLE IF NOT EXISTS indexing_rules (
     priority INTEGER DEFAULT 0
 );
 
--- 6. Vector Table (sqlite-vec)
+-- 6. Jobs Table
+-- Central queue for indexing jobs from watcher and UI
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path TEXT UNIQUE NOT NULL,        -- dedup key: one active job per file
+    source TEXT NOT NULL DEFAULT 'watcher', -- 'watcher' or 'ui'
+    priority INTEGER NOT NULL DEFAULT 1,   -- higher = dequeued first (ui=10, watcher=1)
+    status TEXT NOT NULL DEFAULT 'queued',  -- queued, running, completed, failed
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    error_message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status_priority
+    ON jobs (status, priority DESC, created_at ASC);
+
+-- 7. Vector Table (sqlite-vec)
 -- rowid of this table will MATCH rowid (id) of 'chunks' table
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
     embedding float[1024]
