@@ -7,6 +7,10 @@ from typing import Callable, Optional
 from core.context import AppContext
 from jobs import JobQueue, transition_state
 
+import os
+import asyncio
+from ingestion.change_detector import determine_strategy, ReindexStrategy
+
 logger = logging.getLogger(__name__)
 
 ProcessorFn = Callable[..., None]
@@ -54,6 +58,7 @@ class Worker:
         """Poll the queue and process jobs until stopped."""
         while self._running:
             try:
+                # 1. Dequeue job from the central queue
                 job = await asyncio.to_thread(self._queue.dequeue)
                 if job is None:
                     await asyncio.sleep(self._poll_interval)
@@ -68,11 +73,27 @@ class Worker:
                 )
 
                 try:
-                    await asyncio.to_thread(self._processor, job.file_path, self._ctx)
-                    await asyncio.to_thread(
-                        transition_state, self._queue, job.id, "completed"
-                    )
-                    logger.info("Job %d completed", job.id)
+                    # 2. Retrieve existing metadata for this file from the DB 
+                    # This requires the get_file_record helper in db/unified.py
+                    db_record = await asyncio.to_thread(self._ctx.db.get_file_record, job.file_path)
+                    
+                    # 3. Determine if content actually changed using the detector [cite: 187]
+                    from ingestion.change_detector import determine_strategy, ReindexStrategy
+                    strategy = await asyncio.to_thread(determine_strategy, job.file_path, db_record)
+
+                    # 4. Implement Decision Rules 
+                    if strategy == ReindexStrategy.SKIP:
+                        logger.info("Job %d: No content changes detected. Skipping re-index.", job.id)
+                        await asyncio.to_thread(transition_state, self._queue, job.id, "completed")
+                        continue
+                    
+                    # 5. Execute processing based on strategy (Full Index vs. Metadata Update) [cite: 189]
+                    logger.info("Strategy for job %d: %s", job.id, strategy.value)
+                    await asyncio.to_thread(self._processor, job.file_path, strategy, self._ctx)
+                    
+                    await asyncio.to_thread(transition_state, self._queue, job.id, "completed")
+                    logger.info("Job %d completed successfully", job.id)
+
                 except Exception as exc:
                     error_msg = f"{type(exc).__name__}: {exc}"
                     updated = await asyncio.to_thread(
@@ -83,9 +104,7 @@ class Worker:
                         error_msg,
                     )
                     if updated.status == "queued":
-                        logger.warning(
-                            "Job %d failed (will retry): %s", job.id, error_msg
-                        )
+                        logger.warning("Job %d failed (will retry): %s", job.id, error_msg)
                     else:
                         logger.error("Job %d permanently failed: %s", job.id, error_msg)
 
