@@ -5,12 +5,11 @@ from pathlib import Path
 import pytest
 
 from ingestion import (
-    ingest,
     IngestionPipeline,
     IngestionResult,
     PipelineConfig,
+    ingest,
 )
-
 
 # --- Validity: result structure and chunk schema ---
 

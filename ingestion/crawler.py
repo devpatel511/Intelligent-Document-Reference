@@ -1,7 +1,7 @@
 """File crawler: recursive scan for supported document types."""
 
-import hashlib
 import fnmatch
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional

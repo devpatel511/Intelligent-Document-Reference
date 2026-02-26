@@ -16,6 +16,7 @@ from tests.unit.test_ingestion import (
     test_text_input_parses_file,
 )
 from tests.unit.test_pipeline import (
+    test_ingest_chunks_have_required_schema,
     test_ingest_code_file_produces_code_chunks,
     test_ingest_filters_page_number_like_content,
     test_ingest_filters_short_boilerplate,
@@ -25,7 +26,6 @@ from tests.unit.test_pipeline import (
     test_ingest_sample_code_file,
     test_ingest_sample_text_file,
     test_ingest_text_file_produces_text_chunks,
-    test_ingest_chunks_have_required_schema,
     test_pipeline_instance_ingest,
     test_pipeline_modality_override,
     test_pipeline_respects_config,

@@ -7,7 +7,14 @@ dedup, and embedding adapter live here.
 Public entry points: run(input_path, ...) → IngestionOutput; ingest(source, ...) → IngestionResult.
 """
 
+from ingestion.chunking import (
+    StructuralChunk,
+    chunk_document,
+    should_store_chunk,
+    structural_chunk_document,
+)
 from ingestion.config import IngestionConfig
+from ingestion.crawler import DiscoveredFile, crawl_directory
 from ingestion.models import (
     BlockMetadata,
     BlockType,
@@ -30,8 +37,6 @@ from ingestion.parser import (
     TextInput,
     get_input_handler,
 )
-from ingestion.preprocessing import preprocess
-from ingestion.chunking import chunk_document, should_store_chunk, structural_chunk_document, StructuralChunk
 from ingestion.pipeline import (
     IngestionOutput,
     IngestionPipeline,
@@ -41,7 +46,7 @@ from ingestion.pipeline import (
     run,
     run_index,
 )
-from ingestion.crawler import DiscoveredFile, crawl_directory
+from ingestion.preprocessing import preprocess
 
 __all__ = [
     "parse_and_prepare",

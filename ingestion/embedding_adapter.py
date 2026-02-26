@@ -10,8 +10,9 @@ class EmbeddingClient(Protocol):
 
 def _get_voyage_client() -> Optional[EmbeddingClient]:
     try:
-        from model_clients.voyage_client import VoyageEmbeddingClient
         import os
+
+        from model_clients.voyage_client import VoyageEmbeddingClient
         if os.getenv("VOYAGE_API_KEY"):
             return VoyageEmbeddingClient(api_key=os.getenv("VOYAGE_API_KEY"))
     except Exception:
@@ -21,8 +22,8 @@ def _get_voyage_client() -> Optional[EmbeddingClient]:
 
 def _get_ollama_client() -> Optional[EmbeddingClient]:
     try:
-        from model_clients.ollama_client import OllamaClient
         from config.settings import load_settings
+        from model_clients.ollama_client import OllamaClient
         return OllamaClient(url=load_settings().ollama_url)
     except Exception:
         pass

@@ -3,10 +3,8 @@
 from collections import Counter
 from typing import List, Set
 
-from ingestion.models import estimate_tokens
-
 from ingestion.chunking.structural import StructuralChunk
-
+from ingestion.models import estimate_tokens
 
 _STOPWORDS: Set[str] = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",

@@ -3,7 +3,6 @@
 import re
 from typing import List
 
-
 _COPYRIGHT_PATTERNS = [
     r"\b(copyright\s*©?\s*\d{4})\b",
     r"\b(all rights reserved\.?)\b",
