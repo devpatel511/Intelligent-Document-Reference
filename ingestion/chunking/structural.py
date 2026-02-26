@@ -1,6 +1,5 @@
 """Structural chunking: 300-700 tokens, ≤10% overlap, structure-aware."""
 
-import re
 import uuid
 from dataclasses import dataclass
 from typing import Any, List

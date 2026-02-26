@@ -94,7 +94,6 @@ def test_structured_document_serializable() -> None:
 def test_chunk_document_produces_storeable_chunks() -> None:
     """Semantic chunker turns blocks into chunks and applies store heuristic."""
     from ingestion import chunk_document
-    from ingestion.chunking.semantic import CandidateChunk, should_store_chunk
 
     doc = StructuredDocument(
         source_id="test",
