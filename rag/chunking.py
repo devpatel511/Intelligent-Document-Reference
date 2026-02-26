@@ -1,0 +1,180 @@
+"""Structural + semantic chunking: 300-700 tokens, ≤10% overlap, structure-aware."""
+
+import re
+import uuid
+from dataclasses import dataclass
+from typing import Any, List
+
+from ingestion.models import (
+    BlockType,
+    ContentBlock,
+    StructuredDocument,
+    estimate_tokens,
+)
+
+
+@dataclass
+class RAGChunk:
+    """A chunk produced by the RAG pipeline with metadata."""
+
+    chunk_id: str
+    text: str
+    chunk_index: int
+    start_offset: int
+    end_offset: int
+    token_count: int
+    section_hierarchy: tuple[str, ...] = ()
+    page_number: int | None = None
+    file_path: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "chunk_id": self.chunk_id,
+            "chunk_index": self.chunk_index,
+            "start_offset": self.start_offset,
+            "end_offset": self.end_offset,
+            "text_content": self.text,
+            "token_count": self.token_count,
+            "section_hierarchy": list(self.section_hierarchy),
+            "page_number": self.page_number,
+            "file_path": self.file_path,
+        }
+
+
+def _split_into_sentences(text: str) -> List[str]:
+    """Split text into sentence-like segments for overlap."""
+    # Simple split: by sentence boundaries and double newlines
+    parts = re.split(r"(?<=[.!?])\s+|\n\n+", text)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _take_tail_tokens(text: str, n_tokens: int) -> str:
+    """Return last n_tokens worth of text (by word approximation)."""
+    words = text.split()
+    approx = int(n_tokens * 1.3)  # ~4 chars/token
+    if len(words) <= approx:
+        return text
+    return " ".join(words[-approx:])
+
+
+def structural_chunk_document(
+    document: StructuredDocument,
+    *,
+    min_tokens: int = 300,
+    max_tokens: int = 700,
+    overlap_tokens: int = 50,
+    max_overlap_ratio: float = 0.10,
+) -> List[RAGChunk]:
+    """Chunk document with structure awareness, token targets, and overlap.
+
+    Respects block boundaries (headings, paragraphs). Overlap is applied at chunk
+    boundaries. Single blocks exceeding max_tokens are split by paragraph.
+
+    Args:
+        document: Preprocessed StructuredDocument.
+        min_tokens: Minimum target tokens per chunk.
+        max_tokens: Maximum tokens per chunk.
+        overlap_tokens: Overlap between adjacent chunks.
+        max_overlap_ratio: Overlap capped at this fraction of chunk size.
+
+    Returns:
+        List of RAGChunk with metadata.
+    """
+    if not document.blocks:
+        return []
+
+    eff_overlap = min(overlap_tokens, max(0, int(max_tokens * max_overlap_ratio)))
+    chunks: List[RAGChunk] = []
+    acc: List[str] = []
+    acc_tokens = 0
+    chunk_start = 0
+    last_section: tuple[str, ...] = ()
+    last_page: int | None = None
+    overlap_tail = ""
+    chunk_idx = 0
+
+    def flush(t: str, start: int, end: int, section: tuple[str, ...], page: int | None) -> str:
+        nonlocal chunk_idx
+        tail = ""
+        if eff_overlap > 0:
+            tail = _take_tail_tokens(t, eff_overlap)
+        chunks.append(
+            RAGChunk(
+                chunk_id=str(uuid.uuid4()),
+                text=t,
+                chunk_index=chunk_idx,
+                start_offset=start,
+                end_offset=end,
+                token_count=estimate_tokens(t),
+                section_hierarchy=section,
+                page_number=page,
+                file_path=document.source_id,
+            )
+        )
+        chunk_idx += 1
+        return tail
+
+    doc_offset = 0
+    for block in document.blocks:
+        content = block.content.strip()
+        if not content:
+            continue
+        section = block.metadata.section_hierarchy or ()
+        page = block.metadata.page_number
+        bt = estimate_tokens(content)
+
+        if overlap_tail:
+            acc = [overlap_tail]
+            acc_tokens = estimate_tokens(overlap_tail)
+            chunk_start = doc_offset
+            doc_offset += len(overlap_tail) + 2
+            overlap_tail = ""
+
+        if block.block_type == BlockType.HEADING and acc and acc_tokens >= min_tokens:
+            text = "\n\n".join(acc)
+            overlap_tail = flush(text, chunk_start, doc_offset, last_section, last_page)
+            acc = []
+            acc_tokens = 0
+            chunk_start = doc_offset
+
+        if bt > max_tokens:
+            if acc and acc_tokens >= min_tokens:
+                text = "\n\n".join(acc)
+                overlap_tail = flush(text, chunk_start, doc_offset, last_section, last_page)
+                acc = []
+                acc_tokens = 0
+            for para in content.split("\n\n"):
+                pt = estimate_tokens(para)
+                if acc_tokens + pt <= max_tokens:
+                    acc.append(para)
+                    acc_tokens += pt
+                else:
+                    if acc and acc_tokens >= min_tokens:
+                        text = "\n\n".join(acc)
+                        overlap_tail = flush(text, chunk_start, doc_offset, section, page)
+                    acc = [para]
+                    acc_tokens = pt
+                    chunk_start = doc_offset
+                doc_offset += len(para) + 2
+            last_section = section
+            last_page = page
+            continue
+
+        if acc_tokens + bt > max_tokens and acc_tokens >= min_tokens:
+            text = "\n\n".join(acc)
+            overlap_tail = flush(text, chunk_start, doc_offset, last_section, last_page)
+            acc = []
+            acc_tokens = 0
+            chunk_start = doc_offset
+
+        acc.append(content)
+        acc_tokens += bt
+        doc_offset += len(content) + 2
+        last_section = section
+        last_page = page
+
+    if acc:
+        text = "\n\n".join(acc)
+        flush(text, chunk_start, doc_offset, last_section, last_page)
+
+    return chunks

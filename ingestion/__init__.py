@@ -30,6 +30,13 @@ from ingestion.parser import (
     get_input_handler,
 )
 from ingestion.preprocessing import preprocess
+from ingestion.chunking import chunk_document, should_store_chunk
+from ingestion.pipeline import (
+    IngestionPipeline,
+    IngestionResult,
+    PipelineConfig,
+    ingest,
+)
 
 __all__ = [
     "parse_and_prepare",
@@ -55,4 +62,10 @@ __all__ = [
     "SourceModality",
     "file_metadata_from_path",
     "estimate_tokens",
+    "chunk_document",
+    "should_store_chunk",
+    "IngestionPipeline",
+    "IngestionResult",
+    "PipelineConfig",
+    "ingest",
 ]
