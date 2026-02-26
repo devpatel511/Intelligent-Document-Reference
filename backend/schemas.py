@@ -13,3 +13,9 @@ class WatchPathRequest(BaseModel):
 class WatchPathResponse(BaseModel):
     status: str
     active_paths: List[dict]
+
+
+class SyncPathsRequest(BaseModel):
+    """Inclusion list paths to sync with monitor_config (paths not in this list get is_active=0)."""
+
+    paths: List[str] = []

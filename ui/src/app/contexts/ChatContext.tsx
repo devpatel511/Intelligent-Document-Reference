@@ -68,6 +68,9 @@ interface ChatContextType {
   importFolder: (files: FileList, type: 'inclusion' | 'exclusion') => Promise<void>;
   setWatcherPath: (path: string) => Promise<boolean>;
   addWatcherPath: (path: string) => Promise<boolean>;
+  removeWatcherPath: (path: string) => Promise<void>;
+  getActiveWatcherPaths: () => Promise<string[]>;
+  syncWatcherPaths: (paths: string[]) => Promise<void>;
   watcherPath: string | null;
   loadWatcherPath: () => Promise<void>;
   saveFileIndexingConfig: (config: {
@@ -75,6 +78,7 @@ interface ChatContextType {
     exclusion?: { files?: string[]; directories?: string[]; patterns?: string[] };
     context?: { files?: string[] };
   }) => Promise<boolean>;
+  getFileIndexingConfig: () => Promise<{ inclusion?: { directories?: string[] } }>;
   loadFiles: () => Promise<void>;
 }
 
@@ -159,6 +163,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /** Fetch saved file indexing config from backend (does not update state). */
+  const getFileIndexingConfig = async (): Promise<{
+    inclusion?: { directories?: string[] };
+  }> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/indexing`);
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Failed to get file indexing config:', error);
+      return {};
+    }
+  };
+
   const loadWatcherPath = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/watcher/path`);
@@ -178,11 +196,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     try {
       // Remove existing path so we only have one folder
       if (watcherPath) {
-        await fetch(`${API_BASE_URL}/watcher/path`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: watcherPath, excluded_files: [] }),
-        });
+        const url = `${API_BASE_URL}/watcher/path?path=${encodeURIComponent(watcherPath)}`;
+        await fetch(url, { method: 'DELETE' });
       }
       const response = await fetch(`${API_BASE_URL}/watcher/path`, {
         method: 'POST',
@@ -219,6 +234,59 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return true;
     } catch (error) {
       console.error('Failed to add watcher path:', error);
+      throw error;
+    }
+  };
+
+  /** Remove a path from the watcher (sets is_active=0 in monitor_config). */
+  const removeWatcherPath = async (path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) return;
+    try {
+      const url = `${API_BASE_URL}/watcher/path?path=${encodeURIComponent(trimmed)}`;
+      const response = await fetch(url, { method: 'DELETE' });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || response.statusText);
+      }
+      await loadWatcherPath();
+    } catch (error) {
+      console.error('Failed to remove watcher path:', error);
+      throw error;
+    }
+  };
+
+  /** Return list of currently active watcher paths (from monitor_config where is_active=1). */
+  const getActiveWatcherPaths = async (): Promise<string[]> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/path`);
+      const data = await response.json();
+      const paths = data?.active_paths ?? [];
+      return paths.map((p: { path?: string }) => p.path).filter(Boolean);
+    } catch (error) {
+      console.error('Failed to get active watcher paths:', error);
+      return [];
+    }
+  };
+
+  /**
+   * Sync monitor_config with the inclusion list: backend sets is_active=0 for paths
+   * not in the list and is_active=1 for paths in the list (normalized comparison).
+   */
+  const syncWatcherPaths = async (paths: string[]) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: paths ?? [] }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || response.statusText);
+      }
+      await loadWatcherPath();
+    } catch (error) {
+      console.error('Failed to sync watcher paths:', error);
       throw error;
     }
   };
@@ -349,52 +417,49 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     try {
       if (files.length === 0) return;
       
-      // Extract folder path from first file's webkitRelativePath
+      // Extract folder path from first file's webkitRelativePath (e.g. "TEST" or "parent/TEST")
       const firstFile = files[0] as File & { webkitRelativePath?: string };
       if (!firstFile.webkitRelativePath) {
         throw new Error('Folder selection not supported in this browser');
       }
       
-      const folderPath = firstFile.webkitRelativePath.split('/')[0];
+      const folderName = firstFile.webkitRelativePath.split('/')[0];
       const allFilePaths: string[] = [];
       
-      // Extract all file paths from the folder
       Array.from(files).forEach((file) => {
         const fileWithPath = file as File & { webkitRelativePath?: string };
         if (fileWithPath.webkitRelativePath) {
-          // Convert to relative path format
-          const relativePath = fileWithPath.webkitRelativePath;
-          allFilePaths.push(relativePath);
+          allFilePaths.push(fileWithPath.webkitRelativePath);
         }
       });
+
+      // Use inclusion folder (watcher path) as base so we store full paths in YAML
+      const base = (watcherPath ?? '').trim().replace(/\/$/, '');
+      const dirToAdd = base ? `${base}/${folderName}` : folderName;
+      const toFullPath = (rel: string) => (base ? `${base}/${rel}` : rel);
       
       if (type === 'inclusion') {
-        // Add folder to directories list
-        if (!indexedDirectories.includes(folderPath)) {
-          setIndexedDirectories((prev) => [...prev, folderPath]);
+        if (!indexedDirectories.includes(dirToAdd)) {
+          setIndexedDirectories((prev) => [...prev, dirToAdd]);
         }
-        // Add all files to indexed files
         setIndexedFiles((prev) => {
           const newFiles = [...prev];
-          allFilePaths.forEach((path) => {
-            if (!newFiles.includes(path)) {
-              newFiles.push(path);
-            }
+          allFilePaths.forEach((rel) => {
+            const path = toFullPath(rel);
+            if (!newFiles.includes(path)) newFiles.push(path);
           });
           return newFiles;
         });
       } else {
-        // Add folder to excluded directories list
-        if (!excludedDirectories.includes(folderPath)) {
-          setExcludedDirectories((prev) => [...prev, folderPath]);
+        const exclDir = base ? `${base}/${folderName}` : folderName;
+        if (!excludedDirectories.includes(exclDir)) {
+          setExcludedDirectories((prev) => [...prev, exclDir]);
         }
-        // Add all files to excluded files
         setExcludedFiles((prev) => {
           const newFiles = [...prev];
-          allFilePaths.forEach((path) => {
-            if (!newFiles.includes(path)) {
-              newFiles.push(path);
-            }
+          allFilePaths.forEach((rel) => {
+            const path = toFullPath(rel);
+            if (!newFiles.includes(path)) newFiles.push(path);
           });
           return newFiles;
         });
@@ -474,9 +539,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         importFolder,
         setWatcherPath,
         addWatcherPath,
+        removeWatcherPath,
+        getActiveWatcherPaths,
+        syncWatcherPaths,
         watcherPath,
         loadWatcherPath,
         saveFileIndexingConfig,
+        getFileIndexingConfig,
         loadFiles,
       }}
     >

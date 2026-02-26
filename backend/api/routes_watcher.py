@@ -3,9 +3,9 @@
 import os
 import sys
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
-from backend.schemas import WatchPathRequest, WatchPathResponse
+from backend.schemas import SyncPathsRequest, WatchPathRequest, WatchPathResponse
 
 # Assuming the app is run from root, we can import watcher
 try:
@@ -51,7 +51,31 @@ async def get_watch_paths():
 
 
 @router.delete("/path", response_model=WatchPathResponse)
-async def remove_watch_path_by_path(req: WatchPathRequest):
-    clean_path = os.path.abspath(os.path.expanduser(req.path))
+async def remove_watch_path_by_path(
+    path: str = Query(..., description="Path to stop watching")
+):
+    """Remove a path from the watcher (sets is_active=0). Uses query param so DELETE works reliably."""
+    clean_path = os.path.abspath(os.path.expanduser(path))
     registry.remove_watch_path(clean_path)
     return {"status": "removed", "active_paths": registry.get_watch_paths()}
+
+
+@router.post("/sync", response_model=WatchPathResponse)
+async def sync_watch_paths(req: SyncPathsRequest):
+    """
+    Sync monitor_config with the inclusion list from the UI (YAML stores full paths).
+    - Any path in monitor_config that is NOT in req.paths (normalized) gets is_active=0.
+    - Any path in req.paths gets added/updated with is_active=1.
+    All paths are normalized (abspath, no trailing sep) for comparison.
+    """
+    raw = [p.strip() for p in (req.paths or []) if p and p.strip()]
+    inclusion_set = {os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in raw}
+    all_db_paths = registry.get_all_monitor_paths()
+    for db_path in all_db_paths:
+        normalized_db = db_path.rstrip(os.sep)
+        if normalized_db not in inclusion_set:
+            registry.remove_watch_path(db_path)
+    for p in raw:
+        full_path = os.path.abspath(os.path.expanduser(p))
+        registry.add_watch_path(full_path, [])
+    return {"status": "synced", "active_paths": registry.get_watch_paths()}

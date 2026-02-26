@@ -35,7 +35,7 @@ export function SettingsPage() {
     setUserInfo,
     importFolder,
     setWatcherPath,
-    addWatcherPath,
+    syncWatcherPaths,
     watcherPath,
     indexedFiles,
     indexedDirectories,
@@ -127,19 +127,14 @@ export function SettingsPage() {
         },
       });
 
-      // Sync every inclusion folder to watcher DB (monitor_config) so they all get watched
-      if (success && directoriesToSave.length > 0) {
-        const failed: string[] = [];
-        for (const dir of directoriesToSave) {
-          try {
-            await addWatcherPath(dir);
-          } catch (err) {
-            failed.push(dir);
-            console.warn(`Watcher path failed for ${dir}:`, err);
-          }
-        }
-        if (failed.length > 0) {
-          alert(`Configuration saved. Watcher could not add: ${failed.join(', ')}`);
+      if (success) {
+        // Sync monitor_config with the inclusion list we just saved (no extra GET).
+        // Backend sets is_active=0 for paths not in this list, is_active=1 for paths in the list.
+        try {
+          await syncWatcherPaths(directoriesToSave);
+        } catch (err) {
+          console.warn('Watcher sync failed:', err);
+          alert(`Configuration saved. Watcher sync failed: ${err instanceof Error ? err.message : err}`);
         }
       }
 

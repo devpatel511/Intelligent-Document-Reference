@@ -149,6 +149,13 @@ class FileRegistry:
                 results.append(d)
             return results
 
+    def get_all_monitor_paths(self) -> List[str]:
+        """Return all paths in monitor_config (active and inactive), for syncing with inclusion list."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT path FROM monitor_config")
+            return [row[0] for row in cursor.fetchall()]
+
     def remove_watch_path(self, path: str):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
