@@ -7,15 +7,85 @@ from ingestion.chunking.structural import StructuralChunk
 from ingestion.models import estimate_tokens
 
 _STOPWORDS: Set[str] = {
-    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "from", "as", "is", "was", "are", "were", "been",
-    "be", "have", "has", "had", "do", "does", "did", "will", "would",
-    "could", "should", "may", "might", "must", "shall", "can", "this",
-    "that", "these", "those", "it", "its", "they", "them", "their",
-    "i", "you", "he", "she", "we", "what", "which", "who", "when",
-    "where", "why", "how", "all", "each", "every", "both", "few",
-    "more", "most", "other", "some", "such", "no", "nor", "not",
-    "only", "own", "same", "so", "than", "too", "very", "just",
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "but",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "of",
+    "with",
+    "by",
+    "from",
+    "as",
+    "is",
+    "was",
+    "are",
+    "were",
+    "been",
+    "be",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "must",
+    "shall",
+    "can",
+    "this",
+    "that",
+    "these",
+    "those",
+    "it",
+    "its",
+    "they",
+    "them",
+    "their",
+    "i",
+    "you",
+    "he",
+    "she",
+    "we",
+    "what",
+    "which",
+    "who",
+    "when",
+    "where",
+    "why",
+    "how",
+    "all",
+    "each",
+    "every",
+    "both",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "no",
+    "nor",
+    "not",
+    "only",
+    "own",
+    "same",
+    "so",
+    "than",
+    "too",
+    "very",
+    "just",
 }
 
 
@@ -35,10 +105,14 @@ def _tfidf_novelty(chunk: StructuralChunk, all_chunks: List[StructuralChunk]) ->
         for w in c.text.lower().split():
             if w not in _STOPWORDS and len(w) > 2:
                 doc_terms[w] += 1
-    chunk_terms = [w for w in chunk.text.lower().split() if w not in _STOPWORDS and len(w) > 2]
+    chunk_terms = [
+        w for w in chunk.text.lower().split() if w not in _STOPWORDS and len(w) > 2
+    ]
     if not chunk_terms:
         return 0.0
-    novelty = sum(1.0 / (1 + doc_terms.get(w, 0)) for w in chunk_terms) / len(chunk_terms)
+    novelty = sum(1.0 / (1 + doc_terms.get(w, 0)) for w in chunk_terms) / len(
+        chunk_terms
+    )
     return min(1.0, novelty)
 
 

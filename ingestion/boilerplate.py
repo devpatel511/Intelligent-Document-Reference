@@ -21,8 +21,7 @@ _NAV_PATTERNS = [
 ]
 
 _TOC_LINE = re.compile(
-    r"^(\.{2,}|\s+)\d+\s*$|"
-    r"^[\w\s]+\s+\.{2,}\s+\d+\s*$",
+    r"^(\.{2,}|\s+)\d+\s*$|" r"^[\w\s]+\s+\.{2,}\s+\d+\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 

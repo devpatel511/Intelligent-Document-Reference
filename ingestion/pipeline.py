@@ -46,7 +46,9 @@ class IngestionResult:
             "block_count": self.block_count,
             "chunk_count": self.chunk_count,
             "chunks": self.chunks,
-            "file_metadata": self.file_metadata.to_dict() if self.file_metadata else None,
+            "file_metadata": (
+                self.file_metadata.to_dict() if self.file_metadata else None
+            ),
         }
 
 
@@ -141,6 +143,7 @@ class PipelineConfig:
 
 def _apply_boilerplate_to_document(document: StructuredDocument) -> StructuredDocument:
     from ingestion.boilerplate import remove_boilerplate
+
     new_blocks = []
     for b in document.blocks:
         cleaned = remove_boilerplate(b.content)
@@ -179,7 +182,13 @@ def _structural_chunk_and_filter(
             min_content_word_ratio=config.min_content_word_ratio,
         )
     return [
-        {"chunk_id": c.chunk_id, "chunk_index": i, "start_offset": c.start_offset, "end_offset": c.end_offset, "text_content": c.text}
+        {
+            "chunk_id": c.chunk_id,
+            "chunk_index": i,
+            "start_offset": c.start_offset,
+            "end_offset": c.end_offset,
+            "text_content": c.text,
+        }
         for i, c in enumerate(chunks)
     ]
 
@@ -220,7 +229,9 @@ def run(
     elif root.is_file():
         ext = root.suffix.lower()
         if ext not in cfg.supported_extensions:
-            return IngestionOutput(chunks=[], files_processed=0, chunks_generated=0, chunks_after_dedup=0)
+            return IngestionOutput(
+                chunks=[], files_processed=0, chunks_generated=0, chunks_after_dedup=0
+            )
         try:
             st = root.stat()
             file_iter = [
@@ -233,7 +244,9 @@ def run(
                 )
             ]
         except OSError:
-            return IngestionOutput(chunks=[], files_processed=0, chunks_generated=0, chunks_after_dedup=0)
+            return IngestionOutput(
+                chunks=[], files_processed=0, chunks_generated=0, chunks_after_dedup=0
+            )
     else:
         file_iter = list(
             crawl_directory(
@@ -252,8 +265,15 @@ def run(
     for discovered in file_iter:
         files_processed += 1
         try:
-            handler = get_input_handler(str(discovered.path), modality=_modality_for_ext(discovered.extension))
-            document = parse_and_prepare(handler, str(discovered.path), config=cfg.ingestion, base_path=root.parent if root.is_dir() else root.parent)
+            handler = get_input_handler(
+                str(discovered.path), modality=_modality_for_ext(discovered.extension)
+            )
+            document = parse_and_prepare(
+                handler,
+                str(discovered.path),
+                config=cfg.ingestion,
+                base_path=root.parent if root.is_dir() else root.parent,
+            )
             document = preprocess(document)
 
             if cfg.use_structural_chunking:
@@ -287,7 +307,11 @@ def run(
 
             texts = [c["text_content"] for c in chunks]
             try:
-                embs = embedder(texts) if embedder else embed_texts_batched(texts, batch_size=cfg.embedding_batch_size)
+                embs = (
+                    embedder(texts)
+                    if embedder
+                    else embed_texts_batched(texts, batch_size=cfg.embedding_batch_size)
+                )
             except RuntimeError as e:
                 logger.warning("Embedding skipped: %s", e)
                 for c in chunks:
@@ -304,8 +328,19 @@ def run(
                 continue
 
             if cfg.dedup_enabled:
-                chunk_list = [{"chunk_id": c["chunk_id"], "chunk_index": i, "start_offset": c["start_offset"], "end_offset": c["end_offset"], "text_content": c["text_content"]} for i, c in enumerate(chunks)]
-                chunks, embs = remove_near_duplicates_dicts(chunk_list, embs, threshold=cfg.dedup_similarity_threshold)
+                chunk_list = [
+                    {
+                        "chunk_id": c["chunk_id"],
+                        "chunk_index": i,
+                        "start_offset": c["start_offset"],
+                        "end_offset": c["end_offset"],
+                        "text_content": c["text_content"],
+                    }
+                    for i, c in enumerate(chunks)
+                ]
+                chunks, embs = remove_near_duplicates_dicts(
+                    chunk_list, embs, threshold=cfg.dedup_similarity_threshold
+                )
             for c in chunks:
                 rec = dict(c)
                 rec["file_path"] = str(discovered.path)
@@ -313,10 +348,27 @@ def run(
             all_embeddings.extend(embs)
 
             if db and embs:
-                file_hash = discovered.content_hash or hashlib.sha256(str(discovered.path).encode()).hexdigest()
-                file_id = db.register_file(str(discovered.path), file_hash, discovered.size_bytes, discovered.modified_timestamp)
+                file_hash = (
+                    discovered.content_hash
+                    or hashlib.sha256(str(discovered.path).encode()).hexdigest()
+                )
+                file_id = db.register_file(
+                    str(discovered.path),
+                    file_hash,
+                    discovered.size_bytes,
+                    discovered.modified_timestamp,
+                )
                 version_id = db.create_version(file_id, file_hash)
-                store_chunks = [{"chunk_id": c["chunk_id"], "chunk_index": i, "start_offset": c["start_offset"], "end_offset": c["end_offset"], "text_content": c["text_content"]} for i, c in enumerate(chunks)]
+                store_chunks = [
+                    {
+                        "chunk_id": c["chunk_id"],
+                        "chunk_index": i,
+                        "start_offset": c["start_offset"],
+                        "end_offset": c["end_offset"],
+                        "text_content": c["text_content"],
+                    }
+                    for i, c in enumerate(chunks)
+                ]
                 db.add_document(file_id, version_id, store_chunks, embs)
 
         except Exception as e:
@@ -352,7 +404,9 @@ class IngestionPipeline:
     ) -> IngestionResult:
         """Run pipeline on a single file/stream. Returns final selected chunks for that input."""
         handler = get_input_handler(source, modality=modality)
-        document = parse_and_prepare(handler, source, config=self.config.ingestion, base_path=base_path)
+        document = parse_and_prepare(
+            handler, source, config=self.config.ingestion, base_path=base_path
+        )
 
         if self.config.use_structural_chunking:
             if self.config.remove_boilerplate:
@@ -401,7 +455,9 @@ def run_index(path: str, ctx=None) -> None:
     """Index a file or directory. Uses ingestion pipeline (final chunks → embed → store)."""
     db = getattr(ctx, "db", None) or (getattr(ctx, "unified_db", None) if ctx else None)
     embedder = getattr(ctx, "embedder", None) if ctx else None
-    config = getattr(ctx, "pipeline_config", None) or PipelineConfig(embed_after_chunk=True, dedup_enabled=True)
+    config = getattr(ctx, "pipeline_config", None) or PipelineConfig(
+        embed_after_chunk=True, dedup_enabled=True
+    )
     p = Path(path).resolve()
     if not p.exists():
         return
@@ -417,7 +473,13 @@ def run_index(path: str, ctx=None) -> None:
                 db=db,
                 embedder=embedder,
                 files_override=[
-                    DiscoveredFile(path=p, file_name=p.name, extension=ext, size_bytes=st.st_size, modified_timestamp=st.st_mtime)
+                    DiscoveredFile(
+                        path=p,
+                        file_name=p.name,
+                        extension=ext,
+                        size_bytes=st.st_size,
+                        modified_timestamp=st.st_mtime,
+                    )
                 ],
             )
         except Exception:

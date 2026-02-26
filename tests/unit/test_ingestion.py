@@ -128,29 +128,40 @@ def test_chunk_document_produces_storeable_chunks() -> None:
     assert len(chunks) == 2
     assert "longer paragraph" in chunks[0]["text_content"]
     assert "def foo()" in chunks[1]["text_content"]
-    assert all("chunk_id" in c and "chunk_index" in c and "text_content" in c for c in chunks)
+    assert all(
+        "chunk_id" in c and "chunk_index" in c and "text_content" in c for c in chunks
+    )
 
 
 def test_should_store_chunk_heuristic() -> None:
     """Store heuristic filters by length and boilerplate."""
     from ingestion.chunking.semantic import CandidateChunk, should_store_chunk
 
-    assert should_store_chunk(
-        CandidateChunk("Too short", (BlockType.PARAGRAPH,), 2, 0, 9),
-        min_chars=30,
-    ) is False
-    assert should_store_chunk(
-        CandidateChunk(
-            "A normal paragraph with enough words to pass the minimum length.",
-            (BlockType.PARAGRAPH,),
-            15,
-            0,
-            60,
-        ),
-        min_chars=30,
-    ) is True
-    assert should_store_chunk(
-        CandidateChunk("PAGE 1", (BlockType.PARAGRAPH,), 2, 0, 6),
-        min_chars=3,
-        skip_boilerplate=True,
-    ) is False
+    assert (
+        should_store_chunk(
+            CandidateChunk("Too short", (BlockType.PARAGRAPH,), 2, 0, 9),
+            min_chars=30,
+        )
+        is False
+    )
+    assert (
+        should_store_chunk(
+            CandidateChunk(
+                "A normal paragraph with enough words to pass the minimum length.",
+                (BlockType.PARAGRAPH,),
+                15,
+                0,
+                60,
+            ),
+            min_chars=30,
+        )
+        is True
+    )
+    assert (
+        should_store_chunk(
+            CandidateChunk("PAGE 1", (BlockType.PARAGRAPH,), 2, 0, 6),
+            min_chars=3,
+            skip_boilerplate=True,
+        )
+        is False
+    )

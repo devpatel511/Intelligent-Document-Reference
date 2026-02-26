@@ -108,6 +108,7 @@ def _merge_blocks_into_chunks(
 
 # --- Heuristic: should we store this chunk? ---
 
+
 def _is_likely_boilerplate(text: str) -> bool:
     """True if chunk looks like boilerplate (page numbers, all caps, mostly numbers)."""
     if not text or len(text.strip()) < 10:
@@ -161,7 +162,9 @@ def should_store_chunk(
         return False
     if skip_block_types and all(bt in skip_block_types for bt in chunk.block_types):
         return False
-    if store_block_types and not any(bt in store_block_types for bt in chunk.block_types):
+    if store_block_types and not any(
+        bt in store_block_types for bt in chunk.block_types
+    ):
         return False
     if skip_boilerplate and _is_likely_boilerplate(text):
         return False
@@ -223,11 +226,13 @@ def chunk_document(
             skip_boilerplate=skip_boilerplate,
         ):
             continue
-        out.append({
-            "chunk_id": str(uuid.uuid4()),
-            "chunk_index": len(out),
-            "start_offset": cand.start_offset,
-            "end_offset": cand.end_offset,
-            "text_content": cand.text,
-        })
+        out.append(
+            {
+                "chunk_id": str(uuid.uuid4()),
+                "chunk_index": len(out),
+                "start_offset": cand.start_offset,
+                "end_offset": cand.end_offset,
+                "text_content": cand.text,
+            }
+        )
     return out

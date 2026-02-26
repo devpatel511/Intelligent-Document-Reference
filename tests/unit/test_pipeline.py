@@ -17,7 +17,9 @@ from ingestion import (
 def test_ingest_returns_valid_result_structure(tmp_path: Path) -> None:
     """Pipeline returns IngestionResult with required fields."""
     f = tmp_path / "sample.txt"
-    f.write_text("A paragraph with enough content to pass the heuristic and produce chunks.")
+    f.write_text(
+        "A paragraph with enough content to pass the heuristic and produce chunks."
+    )
 
     result = ingest(str(f))
     print(f"\n  source_id={result.source_id!r}")
@@ -34,10 +36,18 @@ def test_ingest_returns_valid_result_structure(tmp_path: Path) -> None:
 def test_ingest_chunks_have_required_schema(tmp_path: Path) -> None:
     """Every chunk has chunk_id, chunk_index, start_offset, end_offset, text_content."""
     f = tmp_path / "doc.txt"
-    f.write_text("A substantial paragraph with enough words to pass the minimum length.")
+    f.write_text(
+        "A substantial paragraph with enough words to pass the minimum length."
+    )
 
     result = ingest(str(f))
-    required_keys = {"chunk_id", "chunk_index", "start_offset", "end_offset", "text_content"}
+    required_keys = {
+        "chunk_id",
+        "chunk_index",
+        "start_offset",
+        "end_offset",
+        "text_content",
+    }
     for chunk in result.chunks:
         assert required_keys.issubset(chunk.keys()), f"Missing keys in {chunk}"
         assert isinstance(chunk["text_content"], str)
@@ -60,6 +70,7 @@ def test_ingest_result_to_dict_serializable(tmp_path: Path) -> None:
     assert d["chunk_count"] == len(d["chunks"])
     # No non-serializable objects
     import json
+
     json.dumps(d)  # Should not raise
 
 
@@ -72,7 +83,9 @@ def test_ingest_text_file_produces_text_chunks(tmp_path: Path) -> None:
     f = tmp_path / "sample.txt"
     f.write_text(content)
 
-    result = ingest(str(f), config=PipelineConfig(min_block_chars=0, min_chars_store=10))
+    result = ingest(
+        str(f), config=PipelineConfig(min_block_chars=0, min_chars_store=10)
+    )
     assert result.chunk_count >= 1
     combined = " ".join(c["text_content"] for c in result.chunks)
     print(f"\n  chunks={result.chunk_count}, content preview: {combined[:100]}...")
@@ -89,7 +102,9 @@ def test_ingest_code_file_produces_code_chunks(tmp_path: Path) -> None:
     result = ingest(str(f), config=PipelineConfig(min_chars_store=10))
     assert result.chunk_count >= 1
     combined = " ".join(c["text_content"] for c in result.chunks)
-    print(f"\n  chunks={result.chunk_count}, sample: {[c['text_content'][:60] for c in result.chunks]}")
+    print(
+        f"\n  chunks={result.chunk_count}, sample: {[c['text_content'][:60] for c in result.chunks]}"
+    )
     assert "def greet" in combined
     assert "print" in combined
     assert "Jack" in combined
@@ -155,7 +170,9 @@ def test_pipeline_respects_config(tmp_path: Path) -> None:
     # Stricter: skip boilerplate (default) - may filter
     result1 = ingest(str(f), config=PipelineConfig(skip_boilerplate=True))
     # Looser: allow boilerplate
-    result2 = ingest(str(f), config=PipelineConfig(skip_boilerplate=False, min_chars_store=50))
+    result2 = ingest(
+        str(f), config=PipelineConfig(skip_boilerplate=False, min_chars_store=50)
+    )
 
     # At least one config should produce a chunk (the relaxed one)
     assert result2.chunk_count >= 1 or result1.chunk_count >= 1
@@ -180,20 +197,37 @@ def test_pipeline_modality_override(tmp_path: Path) -> None:
 def test_ingest_sample_text_file() -> None:
     """Pipeline works on the project's sample text file."""
     # __file__ = tests/unit/test_pipeline.py -> parent.parent = project root
-    sample_path = Path(__file__).resolve().parent.parent.parent / "ingestion" / "sample_files" / "text" / "sample.txt"
+    sample_path = (
+        Path(__file__).resolve().parent.parent.parent
+        / "ingestion"
+        / "sample_files"
+        / "text"
+        / "sample.txt"
+    )
     if not sample_path.exists():
         pytest.skip("Sample file not found")
 
-    result = ingest(str(sample_path), config=PipelineConfig(min_block_chars=0, min_chars_store=20))
+    result = ingest(
+        str(sample_path), config=PipelineConfig(min_block_chars=0, min_chars_store=20)
+    )
     assert result.chunk_count >= 1
     combined = " ".join(c["text_content"] for c in result.chunks)
     print(f"\n  sample.txt: chunks={result.chunk_count}, preview: {combined[:120]}...")
-    assert "ingestion pipeline" in combined.lower() or "multiple paragraphs" in combined.lower()
+    assert (
+        "ingestion pipeline" in combined.lower()
+        or "multiple paragraphs" in combined.lower()
+    )
 
 
 def test_ingest_sample_code_file() -> None:
     """Pipeline works on the project's sample code file."""
-    sample_path = Path(__file__).resolve().parent.parent.parent / "ingestion" / "sample_files" / "code" / "sample.py"
+    sample_path = (
+        Path(__file__).resolve().parent.parent.parent
+        / "ingestion"
+        / "sample_files"
+        / "code"
+        / "sample.py"
+    )
     if not sample_path.exists():
         pytest.skip("Sample file not found")
 

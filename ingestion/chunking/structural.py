@@ -70,7 +70,9 @@ def structural_chunk_document(
     overlap_tail = ""
     chunk_idx = 0
 
-    def flush(t: str, start: int, end: int, section: tuple[str, ...], page: int | None) -> str:
+    def flush(
+        t: str, start: int, end: int, section: tuple[str, ...], page: int | None
+    ) -> str:
         nonlocal chunk_idx
         tail = _take_tail_tokens(t, eff_overlap) if eff_overlap > 0 else ""
         chunks.append(
@@ -115,7 +117,9 @@ def structural_chunk_document(
         if bt > max_tokens:
             if acc and acc_tokens >= min_tokens:
                 text = "\n\n".join(acc)
-                overlap_tail = flush(text, chunk_start, doc_offset, last_section, last_page)
+                overlap_tail = flush(
+                    text, chunk_start, doc_offset, last_section, last_page
+                )
                 acc = []
                 acc_tokens = 0
             for para in content.split("\n\n"):
@@ -126,7 +130,9 @@ def structural_chunk_document(
                 else:
                     if acc and acc_tokens >= min_tokens:
                         text = "\n\n".join(acc)
-                        overlap_tail = flush(text, chunk_start, doc_offset, section, page)
+                        overlap_tail = flush(
+                            text, chunk_start, doc_offset, section, page
+                        )
                     acc = [para]
                     acc_tokens = pt
                     chunk_start = doc_offset

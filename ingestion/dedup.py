@@ -27,8 +27,7 @@ def remove_near_duplicates(
     kept: List[int] = [0]
     for i in range(1, len(chunks)):
         is_dup = any(
-            _cosine_similarity(embeddings[i], embeddings[k]) > threshold
-            for k in kept
+            _cosine_similarity(embeddings[i], embeddings[k]) > threshold for k in kept
         )
         if not is_dup:
             kept.append(i)
@@ -45,7 +44,9 @@ def remove_near_duplicates_dicts(
         return chunk_dicts, embeddings
     kept: List[int] = [0]
     for i in range(1, len(chunk_dicts)):
-        if any(_cosine_similarity(embeddings[i], embeddings[k]) > threshold for k in kept):
+        if any(
+            _cosine_similarity(embeddings[i], embeddings[k]) > threshold for k in kept
+        ):
             continue
         kept.append(i)
     return [chunk_dicts[i] for i in kept], [embeddings[i] for i in kept]
