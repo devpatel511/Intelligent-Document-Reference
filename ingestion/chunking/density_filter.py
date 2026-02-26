@@ -5,10 +5,9 @@ from typing import List, Set
 
 from ingestion.models import estimate_tokens
 
-from rag.chunking import RAGChunk
+from ingestion.chunking.structural import StructuralChunk
 
 
-# Common stopwords (English) - minimal set for content-word ratio
 _STOPWORDS: Set[str] = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
     "of", "with", "by", "from", "as", "is", "was", "are", "were", "been",
@@ -23,7 +22,6 @@ _STOPWORDS: Set[str] = {
 
 
 def _content_word_ratio(text: str) -> float:
-    """Ratio of non-stopword tokens to total tokens."""
     words = text.lower().split()
     if not words:
         return 0.0
@@ -31,11 +29,7 @@ def _content_word_ratio(text: str) -> float:
     return content / len(words)
 
 
-def _tfidf_novelty(chunk: RAGChunk, all_chunks: List[RAGChunk]) -> float:
-    """Simple TF-IDF inspired novelty: rare terms in doc get higher score.
-
-    Returns a value in [0, 1] where higher = more novel/unique.
-    """
+def _tfidf_novelty(chunk: StructuralChunk, all_chunks: List[StructuralChunk]) -> float:
     if not all_chunks:
         return 1.0
     doc_terms: Counter = Counter()
@@ -46,32 +40,20 @@ def _tfidf_novelty(chunk: RAGChunk, all_chunks: List[RAGChunk]) -> float:
     chunk_terms = [w for w in chunk.text.lower().split() if w not in _STOPWORDS and len(w) > 2]
     if not chunk_terms:
         return 0.0
-    total_docs = len(all_chunks)
     novelty = sum(1.0 / (1 + doc_terms.get(w, 0)) for w in chunk_terms) / len(chunk_terms)
     return min(1.0, novelty)
 
 
 def filter_by_density(
-    chunks: List[RAGChunk],
+    chunks: List[StructuralChunk],
     *,
     min_tokens: int = 50,
     min_content_word_ratio: float = 0.35,
     tfidf_threshold: float = 0.0,
     use_tfidf: bool = False,
-) -> List[RAGChunk]:
-    """Remove low-information chunks by density heuristics.
-
-    Args:
-        chunks: Candidate chunks from same document.
-        min_tokens: Minimum token count.
-        min_content_word_ratio: Minimum ratio of content words to total.
-        tfidf_threshold: Minimum TF-IDF novelty (if use_tfidf).
-        use_tfidf: Whether to apply TF-IDF novelty filter.
-
-    Returns:
-        Filtered list of chunks.
-    """
-    out: List[RAGChunk] = []
+) -> List[StructuralChunk]:
+    """Remove low-information chunks by density heuristics."""
+    out: List[StructuralChunk] = []
     for c in chunks:
         if estimate_tokens(c.text) < min_tokens:
             continue

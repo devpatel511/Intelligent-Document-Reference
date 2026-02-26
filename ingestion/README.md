@@ -1,11 +1,18 @@
 # Ingestion Pipeline
 
-The ingestion pipeline prepares file context into **final selected chunks** ready for the vector DB. It is the single place that decides which chunks to produce; downstream (e.g. RAG) only embeds and stores them.
+Single directory for the **complete ingestion pipeline**: input (file or directory) → final selected chunks → optional embed & store. All chunking (semantic + structural), boilerplate removal, density filter, crawler, dedup, and embedding adapter live here.
+
+## Input and output
+
+- **Input**: File path, directory path, or stream. Directories are crawled for `supported_extensions` (`.pdf`, `.txt`, `.md` by default).
+- **Output**:
+  - **Single file**: `ingest(source)` → `IngestionResult` with `chunks` (final selected chunks).
+  - **File or directory (full pipeline)**: `run(input_path, config=..., db=..., embedder=...)` → `IngestionOutput` with `chunks`, optional `embeddings`, and stats. Optionally stores to vector DB when `db` and `embedder` are provided.
 
 ## How It Works
 
 ```
-Input (path/stream) → Parse → Preprocess → [Boilerplate] → Chunk → [Density filter] → Final selected chunks
+Input (file/dir) → Parse → Preprocess → [Boilerplate] → Chunk → [Density filter] → Final chunks → [Embed] → [Dedup] → [Store]
 ```
 
 1. **Parse**: Input is routed by extension or modality to the appropriate handler (`PDFInput`, `ImageInput`, `CodeInput`, `TextInput`). Raw content is extracted into a `StructuredDocument` with blocks (paragraphs, code blocks, headings, etc.).
@@ -21,9 +28,14 @@ Input (path/stream) → Parse → Preprocess → [Boilerplate] → Chunk → [De
 ## Usage
 
 ```python
-from ingestion import ingest, IngestionPipeline, IngestionResult, PipelineConfig
+from pathlib import Path
+from ingestion import run, ingest, IngestionPipeline, IngestionResult, IngestionOutput, PipelineConfig
 
-# One-shot: path, Path, or binary stream
+# Full pipeline: file or directory → final chunks (optional embed & store)
+output = run(Path("./docs"), config=PipelineConfig(embed_after_chunk=True, dedup_enabled=True), db=db, embedder=embedder)
+# output.chunks, output.embeddings, output.files_processed, output.final_chunk_count
+
+# Single file: final selected chunks only
 result = ingest("path/to/file.txt")
 print(result.chunk_count, result.chunks)
 

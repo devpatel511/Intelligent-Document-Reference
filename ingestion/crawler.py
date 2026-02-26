@@ -1,12 +1,10 @@
-"""File crawler: recursive scan for supported RAG document types."""
+"""File crawler: recursive scan for supported document types."""
 
 import hashlib
 import fnmatch
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
-
-from rag.config import RAGPipelineConfig
+from typing import Iterator, Optional
 
 
 @dataclass
@@ -26,7 +24,6 @@ class DiscoveredFile:
 
 
 def _file_hash(path: Path) -> str:
-    """SHA256 hash of file content for change detection."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
@@ -35,12 +32,10 @@ def _file_hash(path: Path) -> str:
 
 
 def _matches_exclude(path: Path, patterns: tuple[str, ...], root: Path) -> bool:
-    """True if path matches any exclude pattern."""
     try:
-        rel = path.relative_to(root)
+        rel_str = str(path.relative_to(root)).replace("\\", "/")
     except ValueError:
-        rel = path
-    rel_str = str(rel).replace("\\", "/")
+        rel_str = str(path)
     for pat in patterns:
         if fnmatch.fnmatch(rel_str, pat) or fnmatch.fnmatch(str(path), pat):
             return True
@@ -49,23 +44,25 @@ def _matches_exclude(path: Path, patterns: tuple[str, ...], root: Path) -> bool:
 
 def crawl_directory(
     root: Path,
-    config: RAGPipelineConfig,
+    *,
+    supported_extensions: tuple[str, ...] = (".pdf", ".txt", ".md"),
+    exclude_patterns: tuple[str, ...] = (
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/__pycache__/**",
+        "**/*.pyc",
+    ),
+    max_file_size_mb: float = 50.0,
 ) -> Iterator[DiscoveredFile]:
-    """Recursively discover supported files in directory.
-
-    Yields DiscoveredFile for each file matching supported_extensions,
-    respecting exclude_patterns and max_file_size_mb.
-    """
+    """Recursively discover supported files in directory."""
     root = Path(root).resolve()
-    ext_set = frozenset(config.supported_extensions)
-    max_bytes = int(config.max_file_size_mb * 1024 * 1024)
+    ext_set = frozenset(supported_extensions)
+    max_bytes = int(max_file_size_mb * 1024 * 1024)
 
     for path in root.rglob("*"):
-        if not path.is_file():
+        if not path.is_file() or path.suffix.lower() not in ext_set:
             continue
-        if path.suffix.lower() not in ext_set:
-            continue
-        if _matches_exclude(path, config.exclude_patterns, root):
+        if _matches_exclude(path, exclude_patterns, root):
             continue
         try:
             stat = path.stat()

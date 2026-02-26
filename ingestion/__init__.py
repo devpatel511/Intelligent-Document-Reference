@@ -1,9 +1,10 @@
 """Ingestion pipeline package.
 
-Document ingestion and parsing pipeline that prepares heterogeneous inputs
-(PDF, images, code, plain text) for a semantic chunking engine.
+Single directory for the complete pipeline: input (file/dir) → final selected chunks
+→ optional embed & store. Semantic and structural chunking, density filter, crawler,
+dedup, and embedding adapter live here.
 
-Public entry point: parse_and_prepare(document, source, ...)
+Public entry points: run(input_path, ...) → IngestionOutput; ingest(source, ...) → IngestionResult.
 """
 
 from ingestion.config import IngestionConfig
@@ -30,13 +31,17 @@ from ingestion.parser import (
     get_input_handler,
 )
 from ingestion.preprocessing import preprocess
-from ingestion.chunking import chunk_document, should_store_chunk
+from ingestion.chunking import chunk_document, should_store_chunk, structural_chunk_document, StructuralChunk
 from ingestion.pipeline import (
+    IngestionOutput,
     IngestionPipeline,
     IngestionResult,
     PipelineConfig,
     ingest,
+    run,
+    run_index,
 )
+from ingestion.crawler import DiscoveredFile, crawl_directory
 
 __all__ = [
     "parse_and_prepare",
@@ -64,8 +69,15 @@ __all__ = [
     "estimate_tokens",
     "chunk_document",
     "should_store_chunk",
+    "structural_chunk_document",
+    "StructuralChunk",
     "IngestionPipeline",
     "IngestionResult",
+    "IngestionOutput",
     "PipelineConfig",
     "ingest",
+    "run",
+    "run_index",
+    "DiscoveredFile",
+    "crawl_directory",
 ]

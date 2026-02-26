@@ -1,4 +1,4 @@
-"""Structural + semantic chunking: 300-700 tokens, ≤10% overlap, structure-aware."""
+"""Structural chunking: 300-700 tokens, ≤10% overlap, structure-aware."""
 
 import re
 import uuid
@@ -7,15 +7,14 @@ from typing import Any, List
 
 from ingestion.models import (
     BlockType,
-    ContentBlock,
     StructuredDocument,
     estimate_tokens,
 )
 
 
 @dataclass
-class RAGChunk:
-    """A chunk produced by the RAG pipeline with metadata."""
+class StructuralChunk:
+    """A chunk from structural chunking with metadata."""
 
     chunk_id: str
     text: str
@@ -41,17 +40,9 @@ class RAGChunk:
         }
 
 
-def _split_into_sentences(text: str) -> List[str]:
-    """Split text into sentence-like segments for overlap."""
-    # Simple split: by sentence boundaries and double newlines
-    parts = re.split(r"(?<=[.!?])\s+|\n\n+", text)
-    return [p.strip() for p in parts if p.strip()]
-
-
 def _take_tail_tokens(text: str, n_tokens: int) -> str:
-    """Return last n_tokens worth of text (by word approximation)."""
     words = text.split()
-    approx = int(n_tokens * 1.3)  # ~4 chars/token
+    approx = int(n_tokens * 1.3)
     if len(words) <= approx:
         return text
     return " ".join(words[-approx:])
@@ -64,27 +55,13 @@ def structural_chunk_document(
     max_tokens: int = 700,
     overlap_tokens: int = 50,
     max_overlap_ratio: float = 0.10,
-) -> List[RAGChunk]:
-    """Chunk document with structure awareness, token targets, and overlap.
-
-    Respects block boundaries (headings, paragraphs). Overlap is applied at chunk
-    boundaries. Single blocks exceeding max_tokens are split by paragraph.
-
-    Args:
-        document: Preprocessed StructuredDocument.
-        min_tokens: Minimum target tokens per chunk.
-        max_tokens: Maximum tokens per chunk.
-        overlap_tokens: Overlap between adjacent chunks.
-        max_overlap_ratio: Overlap capped at this fraction of chunk size.
-
-    Returns:
-        List of RAGChunk with metadata.
-    """
+) -> List[StructuralChunk]:
+    """Chunk document with structure awareness, token targets, and overlap."""
     if not document.blocks:
         return []
 
     eff_overlap = min(overlap_tokens, max(0, int(max_tokens * max_overlap_ratio)))
-    chunks: List[RAGChunk] = []
+    chunks: List[StructuralChunk] = []
     acc: List[str] = []
     acc_tokens = 0
     chunk_start = 0
@@ -95,11 +72,9 @@ def structural_chunk_document(
 
     def flush(t: str, start: int, end: int, section: tuple[str, ...], page: int | None) -> str:
         nonlocal chunk_idx
-        tail = ""
-        if eff_overlap > 0:
-            tail = _take_tail_tokens(t, eff_overlap)
+        tail = _take_tail_tokens(t, eff_overlap) if eff_overlap > 0 else ""
         chunks.append(
-            RAGChunk(
+            StructuralChunk(
                 chunk_id=str(uuid.uuid4()),
                 text=t,
                 chunk_index=chunk_idx,

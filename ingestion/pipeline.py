@@ -1,33 +1,37 @@
-"""Ingestion pipeline: input -> parse -> preprocess -> semantic chunk -> output chunks.
+"""Ingestion pipeline: single entry point. Input (file/dir) → final chunks → optional embed & store.
 
-Provides a callable API for the full flow up to chunk production.
-Storage and embedding are handled separately downstream.
+Complete pipeline with clear input and output. All chunking (semantic + structural)
+lives in ingestion; output is final selected chunks ready for vector DB.
 """
 
+import hashlib
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, BinaryIO, Optional, Union
+from typing import Any, BinaryIO, Callable, List, Optional, Union
 
 from ingestion.chunking import chunk_document
+from ingestion.chunking.density_filter import filter_by_density
+from ingestion.chunking.structural import structural_chunk_document
 from ingestion.config import IngestionConfig
-from ingestion.models import BlockType, FileMetadata, StructuredDocument
+from ingestion.crawler import DiscoveredFile, crawl_directory
+from ingestion.dedup import remove_near_duplicates_dicts
+from ingestion.embedding_adapter import embed_texts_batched
+from ingestion.models import BlockType, ContentBlock, FileMetadata, StructuredDocument
 from ingestion.orchestrator import parse_and_prepare
 from ingestion.parser import get_input_handler
+from ingestion.preprocessing import preprocess
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class IngestionResult:
-    """Result of running the ingestion pipeline on a single input."""
+    """Result for a single file: final selected chunks (and optional doc/metadata)."""
 
     source_id: str
-    """Identifier of the source (path, stream id, etc.)."""
-
     chunks: list[dict[str, Any]]
-    """Chunks to store. Each dict has chunk_id, chunk_index, start_offset, end_offset, text_content."""
-
     document: StructuredDocument
-    """Preprocessed structured document (blocks) for traceability."""
-
     block_count: int = field(init=False)
     chunk_count: int = field(init=False)
     file_metadata: Optional[FileMetadata] = None
@@ -37,7 +41,6 @@ class IngestionResult:
         self.chunk_count = len(self.chunks)
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize for logging or API responses."""
         return {
             "source_id": self.source_id,
             "block_count": self.block_count,
@@ -48,20 +51,46 @@ class IngestionResult:
 
 
 @dataclass
-class PipelineConfig:
-    """Configuration for the ingestion pipeline flow.
+class IngestionOutput:
+    """Output of the full ingestion pipeline (single file or directory).
 
-    Wraps IngestionConfig and adds chunker-specific settings.
-    Ingestion always outputs final selected chunks (ready for vector DB).
+    Final selected chunks (and optional embeddings) ready for vector DB.
     """
+
+    chunks: List[dict[str, Any]]
+    """Final selected chunks: chunk_id, chunk_index, start_offset, end_offset, text_content."""
+
+    embeddings: List[List[float]] = field(default_factory=list)
+    """Present if pipeline was run with embed_after_chunk=True and embedder."""
+
+    files_processed: int = 0
+    chunks_generated: int = 0
+    chunks_after_dedup: int = 0
+
+    @property
+    def final_chunk_count(self) -> int:
+        return len(self.chunks)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "chunks": self.chunks,
+            "embeddings": self.embeddings,
+            "files_processed": self.files_processed,
+            "chunks_generated": self.chunks_generated,
+            "chunks_after_dedup": self.chunks_after_dedup,
+            "final_chunk_count": self.final_chunk_count,
+        }
+
+
+@dataclass
+class PipelineConfig:
+    """Configuration for the complete ingestion pipeline (chunking, optional embed, store)."""
 
     ingestion: IngestionConfig = field(default_factory=IngestionConfig)
 
-    # Chunker: block merging (used when use_structural_chunking=False)
+    # Semantic chunking (when use_structural_chunking=False)
     min_block_chars: int = 500
     max_block_chars: int = 2500
-
-    # Chunker: store heuristic
     min_chars_store: int = 30
     max_chars_store: int = 30_000
     min_tokens_store: int = 5
@@ -70,22 +99,39 @@ class PipelineConfig:
     store_block_types: Optional[tuple[BlockType, ...]] = None
     skip_block_types: tuple[BlockType, ...] = ()
 
-    # --- RAG-style path: structural chunking + density filter → final chunks ---
+    # Structural chunking (when use_structural_chunking=True)
     use_structural_chunking: bool = False
-    """If True, use token-based structural chunking (300-700) + optional density filter."""
     min_chunk_tokens: int = 300
     max_chunk_tokens: int = 700
     overlap_tokens: int = 50
     max_overlap_ratio: float = 0.10
     remove_boilerplate: bool = False
-    """Remove headers/footers, TOC, copyright (RAG-style)."""
     density_filter_enabled: bool = False
     min_tokens_density: int = 50
     min_content_word_ratio: float = 0.35
 
+    # Crawler (when input is directory)
+    supported_extensions: tuple[str, ...] = (".pdf", ".txt", ".md")
+    exclude_patterns: tuple[str, ...] = (
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/__pycache__/**",
+        "**/*.pyc",
+    )
+    max_file_size_mb: float = 50.0
+
+    # Post-chunk: embed, dedup, store
+    embed_after_chunk: bool = False
+    dedup_enabled: bool = False
+    dedup_similarity_threshold: float = 0.95
+    embedding_batch_size: int = 32
+
+    # Logging
+    log_chunks_generated: bool = True
+    log_final_vector_count: bool = True
+
     @classmethod
     def from_ingestion_config(cls, config: IngestionConfig) -> "PipelineConfig":
-        """Build from IngestionConfig, inheriting PDF block sizes."""
         return cls(
             ingestion=config,
             min_block_chars=config.pdf_min_block_chars,
@@ -94,9 +140,7 @@ class PipelineConfig:
 
 
 def _apply_boilerplate_to_document(document: StructuredDocument) -> StructuredDocument:
-    """Apply RAG-style boilerplate removal to block contents."""
-    from ingestion.models import ContentBlock
-    from rag.boilerplate import remove_boilerplate
+    from ingestion.boilerplate import remove_boilerplate
     new_blocks = []
     for b in document.blocks:
         cleaned = remove_boilerplate(b.content)
@@ -121,10 +165,6 @@ def _structural_chunk_and_filter(
     document: StructuredDocument,
     config: PipelineConfig,
 ) -> list[dict[str, Any]]:
-    """Produce final selected chunks via structural chunking + density filter."""
-    from rag.chunking import structural_chunk_document
-    from rag.density_filter import filter_by_density
-
     chunks = structural_chunk_document(
         document,
         min_tokens=config.min_chunk_tokens,
@@ -138,24 +178,169 @@ def _structural_chunk_and_filter(
             min_tokens=config.min_tokens_density,
             min_content_word_ratio=config.min_content_word_ratio,
         )
-    # Normalize to same chunk dict format as chunk_document (vector DB ready)
     return [
-        {
-            "chunk_id": c.chunk_id,
-            "chunk_index": i,
-            "start_offset": c.start_offset,
-            "end_offset": c.end_offset,
-            "text_content": c.text,
-        }
+        {"chunk_id": c.chunk_id, "chunk_index": i, "start_offset": c.start_offset, "end_offset": c.end_offset, "text_content": c.text}
         for i, c in enumerate(chunks)
     ]
 
 
+def _modality_for_ext(ext: str) -> str:
+    if ext == ".pdf":
+        return "pdf"
+    if ext in (".txt", ".md"):
+        return "text"
+    return "text"
+
+
+def run(
+    input_path: Union[str, Path],
+    *,
+    config: Optional[PipelineConfig] = None,
+    db: Optional[Any] = None,
+    embedder: Optional[Callable[[List[str]], List[List[float]]]] = None,
+    files_override: Optional[List[DiscoveredFile]] = None,
+) -> IngestionOutput:
+    """Run the complete ingestion pipeline: input (file or directory) → final chunks → optional embed & store.
+
+    Args:
+        input_path: File or directory path. If directory, crawls for supported_extensions.
+        config: Pipeline config. Defaults if None.
+        db: Optional UnifiedDatabase. If set and embeddings produced, stores chunks + vectors.
+        embedder: Optional embedder when embed_after_chunk=True.
+        files_override: If set, process only these discovered files (single-file or custom list).
+
+    Returns:
+        IngestionOutput with final chunks and optional embeddings.
+    """
+    cfg = config or PipelineConfig()
+    root = Path(input_path).resolve()
+
+    if files_override is not None:
+        file_iter = files_override
+    elif root.is_file():
+        ext = root.suffix.lower()
+        if ext not in cfg.supported_extensions:
+            return IngestionOutput(chunks=[], files_processed=0, chunks_generated=0, chunks_after_dedup=0)
+        try:
+            st = root.stat()
+            file_iter = [
+                DiscoveredFile(
+                    path=root,
+                    file_name=root.name,
+                    extension=ext,
+                    size_bytes=st.st_size,
+                    modified_timestamp=st.st_mtime,
+                )
+            ]
+        except OSError:
+            return IngestionOutput(chunks=[], files_processed=0, chunks_generated=0, chunks_after_dedup=0)
+    else:
+        file_iter = list(
+            crawl_directory(
+                root,
+                supported_extensions=cfg.supported_extensions,
+                exclude_patterns=cfg.exclude_patterns,
+                max_file_size_mb=cfg.max_file_size_mb,
+            )
+        )
+
+    all_chunks: List[dict[str, Any]] = []
+    all_embeddings: List[List[float]] = []
+    files_processed = 0
+    chunks_generated = 0
+
+    for discovered in file_iter:
+        files_processed += 1
+        try:
+            handler = get_input_handler(str(discovered.path), modality=_modality_for_ext(discovered.extension))
+            document = parse_and_prepare(handler, str(discovered.path), config=cfg.ingestion, base_path=root.parent if root.is_dir() else root.parent)
+            document = preprocess(document)
+
+            if cfg.use_structural_chunking:
+                if cfg.remove_boilerplate:
+                    document = _apply_boilerplate_to_document(document)
+                chunks = _structural_chunk_and_filter(document, cfg)
+            else:
+                chunks = chunk_document(
+                    document,
+                    min_block_chars=cfg.min_block_chars,
+                    max_block_chars=cfg.max_block_chars,
+                    min_chars_store=cfg.min_chars_store,
+                    max_chars_store=cfg.max_chars_store,
+                    min_tokens_store=cfg.min_tokens_store,
+                    max_tokens_store=cfg.max_tokens_store,
+                    skip_boilerplate=cfg.skip_boilerplate,
+                    store_block_types=cfg.store_block_types,
+                    skip_block_types=cfg.skip_block_types,
+                )
+
+            chunks_generated += len(chunks)
+            if not chunks:
+                continue
+
+            if not cfg.embed_after_chunk:
+                for c in chunks:
+                    rec = dict(c)
+                    rec["file_path"] = str(discovered.path)
+                    all_chunks.append(rec)
+                continue
+
+            texts = [c["text_content"] for c in chunks]
+            try:
+                embs = embedder(texts) if embedder else embed_texts_batched(texts, batch_size=cfg.embedding_batch_size)
+            except RuntimeError as e:
+                logger.warning("Embedding skipped: %s", e)
+                for c in chunks:
+                    rec = dict(c)
+                    rec["file_path"] = str(discovered.path)
+                    all_chunks.append(rec)
+                continue
+
+            if len(embs) != len(chunks):
+                for c in chunks:
+                    rec = dict(c)
+                    rec["file_path"] = str(discovered.path)
+                    all_chunks.append(rec)
+                continue
+
+            if cfg.dedup_enabled:
+                chunk_list = [{"chunk_id": c["chunk_id"], "chunk_index": i, "start_offset": c["start_offset"], "end_offset": c["end_offset"], "text_content": c["text_content"]} for i, c in enumerate(chunks)]
+                chunks, embs = remove_near_duplicates_dicts(chunk_list, embs, threshold=cfg.dedup_similarity_threshold)
+            for c in chunks:
+                rec = dict(c)
+                rec["file_path"] = str(discovered.path)
+                all_chunks.append(rec)
+            all_embeddings.extend(embs)
+
+            if db and embs:
+                file_hash = discovered.content_hash or hashlib.sha256(str(discovered.path).encode()).hexdigest()
+                file_id = db.register_file(str(discovered.path), file_hash, discovered.size_bytes, discovered.modified_timestamp)
+                version_id = db.create_version(file_id, file_hash)
+                store_chunks = [{"chunk_id": c["chunk_id"], "chunk_index": i, "start_offset": c["start_offset"], "end_offset": c["end_offset"], "text_content": c["text_content"]} for i, c in enumerate(chunks)]
+                db.add_document(file_id, version_id, store_chunks, embs)
+
+        except Exception as e:
+            logger.exception("Failed to process %s: %s", discovered.path, e)
+
+    if cfg.log_chunks_generated:
+        logger.info("Chunks generated: %d", chunks_generated)
+    if cfg.log_final_vector_count and all_embeddings:
+        logger.info("Final vector count: %d", len(all_embeddings))
+
+    # If we embedded+deduped, all_chunks may have been updated per-file; aggregate is correct
+    return IngestionOutput(
+        chunks=all_chunks,
+        embeddings=all_embeddings,
+        files_processed=files_processed,
+        chunks_generated=chunks_generated,
+        chunks_after_dedup=len(all_chunks),
+    )
+
+
 class IngestionPipeline:
-    """Ingestion pipeline: input -> parse -> preprocess -> chunk/filter -> final selected chunks."""
+    """Ingestion pipeline: single entry point for file/dir → final chunks."""
 
     def __init__(self, config: Optional[PipelineConfig] = None) -> None:
-        """Initialize with optional config. Uses defaults if None."""
         self.config = config or PipelineConfig()
 
     def ingest(
@@ -165,23 +350,9 @@ class IngestionPipeline:
         modality: Optional[str] = None,
         base_path: Optional[Path] = None,
     ) -> IngestionResult:
-        """Run the pipeline and return final selected chunks (ready for vector DB).
-
-        Args:
-            source: File path, Path, or binary stream.
-            modality: Optional override (pdf, image, code, text). Inferred from extension if omitted.
-            base_path: Optional base path for relative file_metadata.
-
-        Returns:
-            IngestionResult with final selected chunks (chunk_id, chunk_index, start_offset, end_offset, text_content).
-        """
+        """Run pipeline on a single file/stream. Returns final selected chunks for that input."""
         handler = get_input_handler(source, modality=modality)
-        document = parse_and_prepare(
-            handler,
-            source,
-            config=self.config.ingestion,
-            base_path=base_path,
-        )
+        document = parse_and_prepare(handler, source, config=self.config.ingestion, base_path=base_path)
 
         if self.config.use_structural_chunking:
             if self.config.remove_boilerplate:
@@ -208,48 +379,51 @@ class IngestionPipeline:
             file_metadata=document.file_metadata,
         )
 
+    def run(
+        self,
+        input_path: Union[str, Path],
+        *,
+        db: Optional[Any] = None,
+        embedder: Optional[Callable[[List[str]], List[List[float]]]] = None,
+        files_override: Optional[List[DiscoveredFile]] = None,
+    ) -> IngestionOutput:
+        """Full pipeline: input (file or dir) → final chunks → optional embed & store."""
+        return run(
+            input_path,
+            config=self.config,
+            db=db,
+            embedder=embedder,
+            files_override=files_override,
+        )
+
 
 def run_index(path: str, ctx=None) -> None:
-    """Index a file or directory. Uses ingestion for final selected chunks, then RAG to embed and store.
-
-    - Ingestion produces final chunks (parse -> preprocess -> chunk -> filter).
-    - RAG pipeline embeds those chunks, optionally deduplicates, and stores to vector DB.
-    """
-    from pathlib import Path
-    from rag import run_rag_ingestion
-    from rag.config import RAGPipelineConfig
-
+    """Index a file or directory. Uses ingestion pipeline (final chunks → embed → store)."""
+    db = getattr(ctx, "db", None) or (getattr(ctx, "unified_db", None) if ctx else None)
+    embedder = getattr(ctx, "embedder", None) if ctx else None
+    config = getattr(ctx, "pipeline_config", None) or PipelineConfig(embed_after_chunk=True, dedup_enabled=True)
     p = Path(path).resolve()
     if not p.exists():
         return
-    db = getattr(ctx, "db", None) or (getattr(ctx, "unified_db", None) if ctx else None)
-    embedder = getattr(ctx, "embedder", None) if ctx else None
-    config = getattr(ctx, "rag_config", None) or RAGPipelineConfig()
     if p.is_file():
-        from rag.crawler import DiscoveredFile
         ext = p.suffix.lower()
         if ext not in config.supported_extensions:
             return
         try:
-            stat = p.stat()
-            discovered = DiscoveredFile(
-                path=p,
-                file_name=p.name,
-                extension=ext,
-                size_bytes=stat.st_size,
-                modified_timestamp=stat.st_mtime,
-            )
-            run_rag_ingestion(
+            st = p.stat()
+            run(
                 p.parent,
                 config=config,
                 db=db,
                 embedder=embedder,
-                files_override=[discovered],
+                files_override=[
+                    DiscoveredFile(path=p, file_name=p.name, extension=ext, size_bytes=st.st_size, modified_timestamp=st.st_mtime)
+                ],
             )
         except Exception:
             pass
     else:
-        run_rag_ingestion(p, config=config, db=db, embedder=embedder)
+        run(p, config=config, db=db, embedder=embedder)
 
 
 def ingest(
@@ -259,16 +433,6 @@ def ingest(
     modality: Optional[str] = None,
     base_path: Optional[Path] = None,
 ) -> IngestionResult:
-    """Convenience function: run the pipeline and return chunks.
-
-    Args:
-        source: File path, Path, or binary stream.
-        config: Optional PipelineConfig. Uses defaults if None.
-        modality: Optional override for input type.
-        base_path: Optional base path for file metadata.
-
-    Returns:
-        IngestionResult with chunks.
-    """
+    """Convenience: run pipeline on a single source; returns final selected chunks."""
     pipeline = IngestionPipeline(config=config)
     return pipeline.ingest(source, modality=modality, base_path=base_path)
