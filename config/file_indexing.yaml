@@ -19,4 +19,3 @@ context:
   # List of file paths selected for current conversation context
   # Only leaf files (not directories) should be here
   files: []
-

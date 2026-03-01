@@ -31,6 +31,8 @@ If you prefer to set up manually, see the [Installation](#installation) section 
 - **Node.js 18+ and npm** - [Download Node.js](https://nodejs.org/)
 - **Git** (optional, for cloning the repository)
 
+**Folder picker (Browse in Settings):** The native folder picker needs a Python built with Tcl/Tk (tkinter). If you see "Folder picker not available", see [Using the folder picker (tkinter)](docs/TKINTER_SETUP.md) to install Python with tkinter and recreate the virtual environment.
+
 ### Automated Setup
 
 Run the setup script to automatically configure everything:
@@ -46,11 +48,13 @@ This will:
 4. Install Node.js dependencies in the `ui/` directory
 5. Build the frontend application
 
-After setup, you can launch the application with:
+After setup, launch the application using the **virtual environment's Python** (dependencies like `uvicorn` are installed there):
 
 ```bash
-python3 app.py --webui
+.venv/bin/python app.py --webui
 ```
+
+On Windows: `.venv\Scripts\python app.py --webui`
 
 ### Manual Setup
 
@@ -102,11 +106,19 @@ cd ..
 
 ### Launch Web UI
 
-After setup, launch the web interface:
+After setup, launch the web interface using the virtual environment’s Python (so dependencies like `uvicorn` are found):
 
+**macOS/Linux:**
 ```bash
-python3 app.py --webui
+.venv/bin/python app.py --webui
 ```
+
+**Windows:**
+```bash
+.venv\Scripts\python app.py --webui
+```
+
+**Using uv:** If you use [uv](https://github.com/astral-sh/uv), you can run without activating the venv (e.g. `uv run app.py --webui`); uv handles the environment.
 
 The application will be available at `http://127.0.0.1:8000`
 
@@ -115,7 +127,7 @@ The application will be available at `http://127.0.0.1:8000`
 You can specify a custom host and port:
 
 ```bash
-python3 app.py --webui --host 0.0.0.0 --port 8080
+.venv/bin/python app.py --webui --host 0.0.0.0 --port 8080
 ```
 
 ### Command Line Options
@@ -126,6 +138,7 @@ python3 app.py [OPTIONS]
 Options:
   --setup          Set up the environment (install dependencies, build frontend)
   --webui          Launch the web UI with backend server
+  --dev            Development mode: backend (hot-reload) + frontend dev server (backend on --port, UI on 5173)
   --host HOST      Host to bind the server to (default: 127.0.0.1)
   --port PORT      Port to bind the server to (default: 8000)
   -h, --help       Show help message
@@ -175,7 +188,7 @@ cd ..
 If port 8000 is already in use, specify a different port:
 
 ```bash
-python3 app.py --webui --port 8080
+.venv/bin/python app.py --webui --port 8080
 ```
 
 ### Frontend Not Loading
@@ -189,20 +202,57 @@ If the frontend doesn't load:
 
 ### Running in Development Mode
 
-For frontend development with hot-reload:
+Use the **`--dev`** flag to run both the backend (with hot-reload) and the frontend dev server in one go. The backend runs on the usual port (default 8000), the UI on port 5173, and the frontend is configured to talk to the backend.
 
+**macOS/Linux:**
 ```bash
-cd ui
-npm run dev
+.venv/bin/python app.py --dev
 ```
 
-This will start the Vite dev server (typically on port 5173).
+**Windows:**
+```bash
+.venv\Scripts\python app.py --dev
+```
 
-For backend development, you can run the FastAPI server directly:
+Open http://localhost:5173 for the UI; API is at http://127.0.0.1:8000. Press Ctrl+C to stop both processes. You don’t need to run `npm run build` while using `--dev`; the dev server picks up frontend and backend changes automatically.
+
+If you prefer to run them separately (e.g. in two terminals), run the backend with:
 
 ```bash
-uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+.venv/bin/python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+and in another terminal:
+
+```bash
+cd ui && npm run dev
+```
+
+Set `VITE_API_BASE_URL=http://localhost:8000` in the environment if the frontend needs to point at the backend.
+
+### Testing the inclusion folder (watcher)
+
+1. **Start the app** (from project root). For production-style single server:
+   ```bash
+   .venv/bin/python app.py --webui
+   ```
+   For development with hot-reload, use `--dev` (see [Running in Development Mode](#running-in-development-mode)).
+
+2. **In the browser**: Open the app (e.g. http://127.0.0.1:8000 or http://localhost:5173), go to **Settings** → **File Indexing**.
+
+3. **Set the inclusion folder**: In "Inclusion folder path", enter an absolute path to a real folder (e.g. `/Users/you/Intelligent-Document-Reference-Winter2026` or `C:\path\to\project` on Windows). Click **Set inclusion folder**. You should see a success message.
+
+4. **Verify via API** (optional):
+   ```bash
+   curl -s http://localhost:8000/watcher/path
+   ```
+   You should see `active_paths` containing your path. To test POST directly:
+   ```bash
+   curl -s -X POST http://localhost:8000/watcher/path \
+     -H "Content-Type: application/json" \
+     -d '{"path":"/tmp/test_watch_folder","excluded_files":[]}'
+   ```
+   Use a path that exists on your machine; the backend returns 400 if the path does not exist.
 
 ### Project Structure
 

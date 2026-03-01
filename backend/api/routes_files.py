@@ -8,10 +8,55 @@ import yaml
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+try:
+    from watcher.core.database import FileRegistry
+except ImportError:
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+    from watcher.core.database import FileRegistry
+
 router = APIRouter(prefix="/files", tags=["files"])
 
-# Path to file indexing config
+# Path to file indexing config; project root is parent of config dir
 CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "file_indexing.yaml"
+PROJECT_ROOT = CONFIG_PATH.parent.parent
+
+
+def _to_full_path(path: str, base: Optional[Path] = None) -> str:
+    """Convert a path to absolute. If path is relative, resolve against user home (not project folder)."""
+    p = (path or "").strip()
+    if not p:
+        return p
+    path_obj = Path(p)
+    if path_obj.is_absolute():
+        return str(path_obj.resolve())
+    # Use user home as base for relative paths so uploads/imports don't end up inside the project
+    if base is None:
+        base = Path(os.path.expanduser("~"))
+    return str((base / p).resolve())
+
+
+def _paths_to_full_paths(paths: list, base: Optional[Path] = None) -> list:
+    return [_to_full_path(x, base) for x in (paths or [])]
+
+
+def _sync_watcher_to_inclusion_directories(directories: List[str]) -> None:
+    """Sync monitor_config so only these directories are active (same logic as POST /watcher/sync)."""
+    db_path = PROJECT_ROOT / "file_registry.db"
+    if not db_path.exists():
+        return
+    registry = FileRegistry(db_path=str(db_path))
+    raw = [p.strip() for p in (directories or []) if p and p.strip()]
+    inclusion_set = {os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in raw}
+    all_db_paths = registry.get_all_monitor_paths()
+    for db_path in all_db_paths:
+        normalized_db = db_path.rstrip(os.sep)
+        if normalized_db not in inclusion_set:
+            registry.remove_watch_path(db_path)
+    for p in raw:
+        full_path = os.path.abspath(os.path.expanduser(p))
+        registry.add_watch_path(full_path, [])
 
 
 def load_file_indexing_config() -> Dict[str, Any]:
@@ -100,30 +145,34 @@ async def update_file_indexing_config(update: FileIndexingUpdate):
     config = load_file_indexing_config()
 
     if update.inclusion is not None:
-        # Ensure we have the right structure
         inclusion_data = {
-            "files": update.inclusion.get("files", []),
-            "directories": update.inclusion.get("directories", []),
+            "files": _paths_to_full_paths(update.inclusion.get("files", [])),
+            "directories": _paths_to_full_paths(
+                update.inclusion.get("directories", [])
+            ),
         }
         config["inclusion"] = inclusion_data
 
     if update.exclusion is not None:
-        # Ensure we have the right structure
         exclusion_data = {
-            "files": update.exclusion.get("files", []),
-            "directories": update.exclusion.get("directories", []),
+            "files": _paths_to_full_paths(update.exclusion.get("files", [])),
+            "directories": _paths_to_full_paths(
+                update.exclusion.get("directories", [])
+            ),
             "patterns": update.exclusion.get("patterns", []),
         }
         config["exclusion"] = exclusion_data
 
     if update.context is not None:
-        # Filter out directories, only keep files
         context_files = update.context.get("files", [])
-        # Filter to only include actual files (not directories)
         filtered_files = [f for f in context_files if not f.endswith("/")]
-        config["context"] = {"files": filtered_files}
+        config["context"] = {"files": _paths_to_full_paths(filtered_files)}
 
     save_file_indexing_config(config)
+    # Sync monitor_config with the inclusion list we just saved (so is_active matches YAML)
+    _sync_watcher_to_inclusion_directories(
+        config.get("inclusion", {}).get("directories", [])
+    )
     return {"status": "ok", "config": config}
 
 

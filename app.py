@@ -3,11 +3,95 @@
 import argparse
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 import tomllib
 import venv
 from pathlib import Path
+
+
+def _run_dev_mode(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Run backend (uvicorn --reload) and frontend (npm run dev) for development."""
+    project_root = Path(__file__).parent
+    ui_dir = project_root / "ui"
+    venv_path = project_root / ".venv"
+
+    if sys.platform == "win32":
+        venv_python = venv_path / "Scripts" / "python.exe"
+    else:
+        venv_python = venv_path / "bin" / "python"
+
+    if not venv_python.exists():
+        print("ERROR: Virtual environment not found. Run: python app.py --setup")
+        sys.exit(1)
+
+    if not (ui_dir / "node_modules").exists():
+        print("Node dependencies not found. Run: python app.py --setup")
+        sys.exit(1)
+
+    # Backend: uvicorn with --reload
+    backend_cmd = [
+        str(venv_python),
+        "-m",
+        "uvicorn",
+        "backend.main:app",
+        "--reload",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    # Frontend: npm run dev, with API base URL so Vite proxies to backend
+    frontend_env = os.environ.copy()
+    frontend_env["VITE_API_BASE_URL"] = f"http://localhost:{port}"
+
+    npm_path = shutil.which("npm")
+    if not npm_path:
+        print("ERROR: npm not found.")
+        sys.exit(1)
+    frontend_cmd = [npm_path, "run", "dev"]
+    cwd_frontend = str(ui_dir)
+
+    print("Starting development servers...")
+    print(f"  Backend:  http://{host}:{port}")
+    print(
+        f"  Frontend: http://localhost:5173 (uses backend API at {frontend_env['VITE_API_BASE_URL']})"
+    )
+    print("Press Ctrl+C to stop both.")
+
+    backend_proc = subprocess.Popen(
+        backend_cmd,
+        cwd=str(project_root),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+    frontend_proc = subprocess.Popen(
+        frontend_cmd,
+        cwd=cwd_frontend,
+        env=frontend_env,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+
+    def kill_both(*_args, **_kwargs):
+        backend_proc.terminate()
+        frontend_proc.terminate()
+
+    signal.signal(signal.SIGINT, kill_both)
+    signal.signal(signal.SIGTERM, kill_both)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, kill_both)
+
+    try:
+        while backend_proc.poll() is None and frontend_proc.poll() is None:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    kill_both()
+    backend_proc.wait()
+    frontend_proc.wait()
 
 
 def check_command_exists(command: str) -> bool:
@@ -178,6 +262,11 @@ def main():
         default=8000,
         help="Port to bind the server to (default: 8000)",
     )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Development mode: run backend with hot-reload and frontend dev server (backend on --port, UI on 5173)",
+    )
 
     args = parser.parse_args()
 
@@ -186,6 +275,10 @@ def main():
         # After setup, continue to launch web UI if requested
         if not args.webui:
             return
+
+    if args.dev:
+        _run_dev_mode(host=args.host, port=args.port)
+        return
 
     if args.webui:
         ui_dir = Path(__file__).parent / "ui"

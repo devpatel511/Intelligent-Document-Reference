@@ -66,17 +66,30 @@ interface ChatContextType {
   setDarkMode: (enabled: boolean) => void;
   setUserInfo: (info: string) => void;
   importFolder: (files: FileList, type: 'inclusion' | 'exclusion') => Promise<void>;
+  setWatcherPath: (path: string) => Promise<boolean>;
+  browseFolderForWatcher: (type?: 'inclusion' | 'exclusion') => Promise<{ path: string; status: string } | null>;
+  addWatcherPath: (path: string) => Promise<boolean>;
+  removeWatcherPath: (path: string) => Promise<void>;
+  getActiveWatcherPaths: () => Promise<string[]>;
+  syncWatcherPaths: (paths: string[]) => Promise<void>;
+  watcherPath: string | null;
+  loadWatcherPath: () => Promise<void>;
+  userRoot: string | null;
+  loadUserRoot: () => Promise<void>;
   saveFileIndexingConfig: (config: {
     inclusion?: { files?: string[]; directories?: string[] };
     exclusion?: { files?: string[]; directories?: string[]; patterns?: string[] };
     context?: { files?: string[] };
   }) => Promise<boolean>;
+  getFileIndexingConfig: () => Promise<{ inclusion?: { directories?: string[] } }>;
+  loadFileIndexingConfig: () => Promise<void>;
   loadFiles: () => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// Use relative URL when not set so same-origin works (e.g. app at 127.0.0.1:8000)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -99,6 +112,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [excludedDirectories, setExcludedDirectories] = useState<string[]>([]);
   const [exclusionPatterns, setExclusionPatterns] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [watcherPath, setWatcherPathState] = useState<string | null>(null);
+  const [userRoot, setUserRootState] = useState<string | null>(null);
   // General settings
   const [systemPrompt, setSystemPrompt] = useState<string>('You are a helpful AI assistant that provides accurate and detailed answers based on the provided context.');
   const [darkMode, setDarkMode] = useState<boolean>(false);
@@ -109,6 +124,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     loadFiles();
     loadContextFiles();
     loadFileIndexingConfig();
+    loadWatcherPath();
+    loadUserRoot();
   }, []);
 
   const loadContextFiles = async () => {
@@ -150,6 +167,167 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Failed to load file indexing config:', error);
+    }
+  };
+
+  /** Fetch saved file indexing config from backend (does not update state). */
+  const getFileIndexingConfig = async (): Promise<{
+    inclusion?: { directories?: string[] };
+  }> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/files/indexing`);
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Failed to get file indexing config:', error);
+      return {};
+    }
+  };
+
+  const loadWatcherPath = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/path`);
+      const data = await response.json();
+      const paths = data?.active_paths ?? [];
+      // Assume only 1 folder: use first path if any
+      setWatcherPathState(paths.length > 0 ? paths[0].path : null);
+    } catch (error) {
+      console.error('Failed to load watcher path:', error);
+      setWatcherPathState(null);
+    }
+  };
+
+  const loadUserRoot = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/user-root`);
+      const data = await response.json();
+      setUserRootState(data?.user_root ?? null);
+    } catch (error) {
+      console.error('Failed to load user root:', error);
+      setUserRootState(null);
+    }
+  };
+
+  const setWatcherPath = async (path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) return false;
+    try {
+      // Remove existing path so we only have one folder
+      if (watcherPath) {
+        const url = `${API_BASE_URL}/watcher/path?path=${encodeURIComponent(watcherPath)}`;
+        await fetch(url, { method: 'DELETE' });
+      }
+      const response = await fetch(`${API_BASE_URL}/watcher/path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: trimmed, excluded_files: [] }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || response.statusText);
+      }
+      await loadWatcherPath();
+      return true;
+    } catch (error) {
+      console.error('Failed to set watcher path:', error);
+      throw error;
+    }
+  };
+
+  /** Open native folder picker (tkinter on backend); full path is added to inclusion or exclusion in YAML. */
+  const browseFolderForWatcher = async (type: 'inclusion' | 'exclusion' = 'inclusion'): Promise<{ path: string; status: string } | null> => {
+    try {
+      const url = `${API_BASE_URL}/watcher/browse?type=${encodeURIComponent(type)}`;
+      // Long timeout: backend blocks until user picks a folder in the native dialog
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+      const response = await fetch(url, { method: 'POST', signal: controller.signal });
+      clearTimeout(timeoutId);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || response.statusText);
+      }
+      if (type === 'inclusion') await loadWatcherPath();
+      await loadFileIndexingConfig();
+      return { path: data.path ?? '', status: data.status ?? '' };
+    } catch (error) {
+      console.error('Failed to browse folder:', error);
+      throw error;
+    }
+  };
+
+  /** Add a path to the watcher without removing others (for syncing all inclusion folders). */
+  const addWatcherPath = async (path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) return false;
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: trimmed, excluded_files: [] }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || response.statusText);
+      }
+      await loadWatcherPath();
+      return true;
+    } catch (error) {
+      console.error('Failed to add watcher path:', error);
+      throw error;
+    }
+  };
+
+  /** Remove a path from the watcher (sets is_active=0 in monitor_config). */
+  const removeWatcherPath = async (path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) return;
+    try {
+      const url = `${API_BASE_URL}/watcher/path?path=${encodeURIComponent(trimmed)}`;
+      const response = await fetch(url, { method: 'DELETE' });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || response.statusText);
+      }
+      await loadWatcherPath();
+    } catch (error) {
+      console.error('Failed to remove watcher path:', error);
+      throw error;
+    }
+  };
+
+  /** Return list of currently active watcher paths (from monitor_config where is_active=1). */
+  const getActiveWatcherPaths = async (): Promise<string[]> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/path`);
+      const data = await response.json();
+      const paths = data?.active_paths ?? [];
+      return paths.map((p: { path?: string }) => p.path).filter(Boolean);
+    } catch (error) {
+      console.error('Failed to get active watcher paths:', error);
+      return [];
+    }
+  };
+
+  /**
+   * Sync monitor_config with the inclusion list: backend sets is_active=0 for paths
+   * not in the list and is_active=1 for paths in the list (normalized comparison).
+   */
+  const syncWatcherPaths = async (paths: string[]) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: paths ?? [] }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || response.statusText);
+      }
+      await loadWatcherPath();
+    } catch (error) {
+      console.error('Failed to sync watcher paths:', error);
+      throw error;
     }
   };
 
@@ -279,52 +457,49 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     try {
       if (files.length === 0) return;
       
-      // Extract folder path from first file's webkitRelativePath
+      // Extract folder path from first file's webkitRelativePath (e.g. "TEST" or "parent/TEST")
       const firstFile = files[0] as File & { webkitRelativePath?: string };
       if (!firstFile.webkitRelativePath) {
         throw new Error('Folder selection not supported in this browser');
       }
       
-      const folderPath = firstFile.webkitRelativePath.split('/')[0];
+      const folderName = firstFile.webkitRelativePath.split('/')[0];
       const allFilePaths: string[] = [];
       
-      // Extract all file paths from the folder
       Array.from(files).forEach((file) => {
         const fileWithPath = file as File & { webkitRelativePath?: string };
         if (fileWithPath.webkitRelativePath) {
-          // Convert to relative path format
-          const relativePath = fileWithPath.webkitRelativePath;
-          allFilePaths.push(relativePath);
+          allFilePaths.push(fileWithPath.webkitRelativePath);
         }
       });
+
+      // Base for full paths: watcher path if set, otherwise user home (so imports don't end up in project folder)
+      const base = (watcherPath ?? userRoot ?? '').trim().replace(/\/$/, '');
+      const dirToAdd = base ? `${base}/${folderName}` : folderName;
+      const toFullPath = (rel: string) => (base ? `${base}/${rel}` : rel);
       
       if (type === 'inclusion') {
-        // Add folder to directories list
-        if (!indexedDirectories.includes(folderPath)) {
-          setIndexedDirectories((prev) => [...prev, folderPath]);
+        if (!indexedDirectories.includes(dirToAdd)) {
+          setIndexedDirectories((prev) => [...prev, dirToAdd]);
         }
-        // Add all files to indexed files
         setIndexedFiles((prev) => {
           const newFiles = [...prev];
-          allFilePaths.forEach((path) => {
-            if (!newFiles.includes(path)) {
-              newFiles.push(path);
-            }
+          allFilePaths.forEach((rel) => {
+            const path = toFullPath(rel);
+            if (!newFiles.includes(path)) newFiles.push(path);
           });
           return newFiles;
         });
       } else {
-        // Add folder to excluded directories list
-        if (!excludedDirectories.includes(folderPath)) {
-          setExcludedDirectories((prev) => [...prev, folderPath]);
+        const exclDir = base ? `${base}/${folderName}` : folderName;
+        if (!excludedDirectories.includes(exclDir)) {
+          setExcludedDirectories((prev) => [...prev, exclDir]);
         }
-        // Add all files to excluded files
         setExcludedFiles((prev) => {
           const newFiles = [...prev];
-          allFilePaths.forEach((path) => {
-            if (!newFiles.includes(path)) {
-              newFiles.push(path);
-            }
+          allFilePaths.forEach((rel) => {
+            const path = toFullPath(rel);
+            if (!newFiles.includes(path)) newFiles.push(path);
           });
           return newFiles;
         });
@@ -402,7 +577,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setDarkMode,
         setUserInfo,
         importFolder,
+        setWatcherPath,
+        browseFolderForWatcher,
+        addWatcherPath,
+        removeWatcherPath,
+        getActiveWatcherPaths,
+        syncWatcherPaths,
+        watcherPath,
+        loadWatcherPath,
+        userRoot,
+        loadUserRoot,
         saveFileIndexingConfig,
+        getFileIndexingConfig,
+        loadFileIndexingConfig,
         loadFiles,
       }}
     >
