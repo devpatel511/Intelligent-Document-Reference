@@ -1,6 +1,6 @@
 """Ollama (local) client stub supporting embeddings and inference."""
 
-from .base import EmbeddingClient, InferenceClient
+from model_clients.base import EmbeddingClient, InferenceClient
 
 
 class OllamaClient(EmbeddingClient, InferenceClient):

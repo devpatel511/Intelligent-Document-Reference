@@ -27,3 +27,10 @@ file_registry.db
 # GitHub
 .github/
 ui/dist/
+
+# Test outputs
+output.txt
+output2.txt
+
+# DB
+*.db

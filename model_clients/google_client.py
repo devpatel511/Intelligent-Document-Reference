@@ -1,6 +1,6 @@
 """Google embeddings client stub."""
 
-from .base import EmbeddingClient
+from model_clients.base import EmbeddingClient
 
 
 class GoogleEmbeddingClient(EmbeddingClient):
