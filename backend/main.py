@@ -56,7 +56,11 @@ if ui_dist_path.exists():
                 return FileResponse(str(file_path))
 
         # For all other routes (including /chat, /settings, etc.), serve index.html
+        # No-cache so browser always gets fresh HTML after rebuilds (avoids 404 on hashed JS/CSS)
         index_path = ui_dist_path / "index.html"
         if index_path.exists():
-            return FileResponse(str(index_path))
+            return FileResponse(
+                str(index_path),
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
         return {"detail": "Frontend not built"}

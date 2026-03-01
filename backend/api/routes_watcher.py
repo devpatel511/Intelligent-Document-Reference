@@ -1,10 +1,17 @@
 """Watcher endpoints (manage watched paths)."""
 
 import os
+import subprocess
 import sys
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
+from backend.api.routes_files import (
+    _sync_watcher_to_inclusion_directories,
+    load_file_indexing_config,
+    save_file_indexing_config,
+)
 from backend.schemas import SyncPathsRequest, WatchPathRequest, WatchPathResponse
 
 # Assuming the app is run from root, we can import watcher
@@ -16,19 +23,127 @@ except ImportError:
     from watcher.core.database import FileRegistry
 router = APIRouter(prefix="/watcher", tags=["watcher"])
 
-# Initialize DB connection (lightweight)
-# Ensure we point to the same DB file as the watcher
-# We assume the DB is at root "file_registry.db"
-DB_PATH = os.path.abspath("file_registry.db")
+# Use project root for DB so all code (watcher API + file-indexing sync) uses the same file
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DB_PATH = str(_PROJECT_ROOT / "file_registry.db")
 registry = FileRegistry(db_path=DB_PATH)
+
+
+def get_user_root_paths():
+    """
+    Return the most root paths for the current user on this system (home, documents).
+    Use these as defaults so the app is not tied to the project folder.
+    """
+    home = os.path.abspath(os.path.expanduser("~"))
+    docs = os.path.join(home, "Documents")
+    if not os.path.isdir(docs):
+        docs = home
+    return {"user_root": home, "documents": docs if os.path.isdir(docs) else home}
+
+
+@router.get("/user-root")
+async def get_user_root():
+    """Return the suggested root path for this user's system (home dir, documents)."""
+    return get_user_root_paths()
+
+
+def open_folder_dialog():
+    """Open native folder picker via subprocess so tkinter runs on a real main thread (required on macOS)."""
+    script = _PROJECT_ROOT / "scripts" / "folder_picker.py"
+    if not script.exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Folder picker script not found. Enter the folder path manually.",
+        )
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=str(_PROJECT_ROOT),
+        )
+    except subprocess.TimeoutExpired:
+        return ""
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Folder picker failed: {e}. Enter the folder path manually.",
+        ) from e
+
+    if result.returncode != 0:
+        if "TKINTER_UNAVAILABLE" in (result.stderr or ""):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Folder picker not available: this Python was not built with tkinter. "
+                    "See docs/TKINTER_SETUP.md or enter the folder path manually."
+                ),
+            )
+        raise HTTPException(
+            status_code=503,
+            detail=result.stderr
+            or "Folder picker failed. Enter the folder path manually.",
+        )
+
+    path = (result.stdout or "").strip()
+    return path if path else ""
+
+
+@router.post("/browse")
+def browse_folder(type: str = Query("inclusion", description="inclusion or exclusion")):
+    """Open native folder picker (tkinter); get full path and add to inclusion or exclusion in YAML."""
+    path = open_folder_dialog()
+    if not path or not path.strip():
+        return {"path": "", "status": "cancelled"}
+
+    clean_path = os.path.abspath(os.path.expanduser(path)).rstrip(os.sep)
+    if not os.path.exists(clean_path):
+        return {"path": clean_path, "status": "error", "detail": "Path does not exist"}
+
+    config = load_file_indexing_config()
+
+    if type == "exclusion":
+        # Add full path to exclusion directories only (no watcher)
+        exclusion = config.setdefault(
+            "exclusion", {"files": [], "directories": [], "patterns": []}
+        )
+        dirs = list(exclusion.get("directories", []))
+        normalized = {os.path.abspath(p).rstrip(os.sep) for p in dirs}
+        if clean_path not in normalized:
+            dirs.append(clean_path)
+            exclusion["directories"] = dirs
+            config["exclusion"] = exclusion
+            save_file_indexing_config(config)
+        return {"path": clean_path, "status": "added", "type": "exclusion"}
+    else:
+        # inclusion (default): add to watcher and YAML inclusion
+        registry.add_watch_path(clean_path, [])
+        inclusion = config.setdefault("inclusion", {"files": [], "directories": []})
+        dirs = list(inclusion.get("directories", []))
+        normalized = {os.path.abspath(p).rstrip(os.sep) for p in dirs}
+        if clean_path not in normalized:
+            dirs.append(clean_path)
+            inclusion["directories"] = dirs
+            config["inclusion"] = inclusion
+            save_file_indexing_config(config)
+            _sync_watcher_to_inclusion_directories(dirs)
+        updated_paths = registry.get_watch_paths()
+        return {
+            "path": clean_path,
+            "status": "added",
+            "type": "inclusion",
+            "active_paths": updated_paths,
+        }
 
 
 @router.post("/path", response_model=WatchPathResponse)
 async def add_watch_path(req: WatchPathRequest):
-    # Normalize the main path
-    clean_path = os.path.abspath(os.path.expanduser(req.path))
+    # Normalize the main path (no trailing sep) so GET and sync use the same key
+    raw = os.path.abspath(os.path.expanduser(req.path or ""))
+    clean_path = raw.rstrip(os.sep) if raw else raw
 
-    if not os.path.exists(clean_path):
+    if not clean_path or not os.path.exists(clean_path):
         raise HTTPException(
             status_code=400, detail=f"Path does not exist: {clean_path}"
         )
@@ -41,13 +156,30 @@ async def add_watch_path(req: WatchPathRequest):
         ]
 
     registry.add_watch_path(clean_path, clean_excluded)
+
+    # Persist to YAML inclusion so the path survives POST /watcher/sync and appears in the UI
+    config = load_file_indexing_config()
+    inclusion = config.setdefault("inclusion", {"files": [], "directories": []})
+    dirs = list(inclusion.get("directories", []))
+    normalized = {os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in dirs}
+    if clean_path not in normalized:
+        dirs.append(clean_path)
+        inclusion["directories"] = dirs
+        config["inclusion"] = inclusion
+        save_file_indexing_config(config)
+
     updated_paths = registry.get_watch_paths()
     return {"status": "added", "active_paths": updated_paths}
 
 
 @router.get("/path")
 async def get_watch_paths():
-    return {"active_paths": registry.get_watch_paths()}
+    paths = registry.get_watch_paths()
+    # Normalize path keys for consistent responses
+    for p in paths:
+        if p.get("path"):
+            p["path"] = p["path"].rstrip(os.sep)
+    return {"active_paths": paths}
 
 
 @router.delete("/path", response_model=WatchPathResponse)
@@ -55,8 +187,21 @@ async def remove_watch_path_by_path(
     path: str = Query(..., description="Path to stop watching")
 ):
     """Remove a path from the watcher (sets is_active=0). Uses query param so DELETE works reliably."""
-    clean_path = os.path.abspath(os.path.expanduser(path))
+    raw = os.path.abspath(os.path.expanduser(path))
+    clean_path = raw.rstrip(os.sep) if raw else raw
     registry.remove_watch_path(clean_path)
+    # Remove from YAML inclusion so it does not reappear after refresh or next sync
+    config = load_file_indexing_config()
+    inclusion = config.get("inclusion") or {}
+    dirs = list(inclusion.get("directories", []))
+    normalized_dirs = [
+        os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in dirs
+    ]
+    if clean_path in normalized_dirs:
+        dirs = [p for p, n in zip(dirs, normalized_dirs) if n != clean_path]
+        inclusion["directories"] = dirs
+        config["inclusion"] = inclusion
+        save_file_indexing_config(config)
     return {"status": "removed", "active_paths": registry.get_watch_paths()}
 
 

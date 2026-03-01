@@ -23,18 +23,21 @@ CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "file_indexing.ya
 PROJECT_ROOT = CONFIG_PATH.parent.parent
 
 
-def _to_full_path(path: str, base: Path = PROJECT_ROOT) -> str:
-    """Convert a path to absolute; use project root if path is relative."""
+def _to_full_path(path: str, base: Optional[Path] = None) -> str:
+    """Convert a path to absolute. If path is relative, resolve against user home (not project folder)."""
     p = (path or "").strip()
     if not p:
         return p
     path_obj = Path(p)
     if path_obj.is_absolute():
         return str(path_obj.resolve())
+    # Use user home as base for relative paths so uploads/imports don't end up inside the project
+    if base is None:
+        base = Path(os.path.expanduser("~"))
     return str((base / p).resolve())
 
 
-def _paths_to_full_paths(paths: list, base: Path = PROJECT_ROOT) -> list:
+def _paths_to_full_paths(paths: list, base: Optional[Path] = None) -> list:
     return [_to_full_path(x, base) for x in (paths or [])]
 
 

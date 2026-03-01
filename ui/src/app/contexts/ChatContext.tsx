@@ -67,24 +67,29 @@ interface ChatContextType {
   setUserInfo: (info: string) => void;
   importFolder: (files: FileList, type: 'inclusion' | 'exclusion') => Promise<void>;
   setWatcherPath: (path: string) => Promise<boolean>;
+  browseFolderForWatcher: (type?: 'inclusion' | 'exclusion') => Promise<{ path: string; status: string } | null>;
   addWatcherPath: (path: string) => Promise<boolean>;
   removeWatcherPath: (path: string) => Promise<void>;
   getActiveWatcherPaths: () => Promise<string[]>;
   syncWatcherPaths: (paths: string[]) => Promise<void>;
   watcherPath: string | null;
   loadWatcherPath: () => Promise<void>;
+  userRoot: string | null;
+  loadUserRoot: () => Promise<void>;
   saveFileIndexingConfig: (config: {
     inclusion?: { files?: string[]; directories?: string[] };
     exclusion?: { files?: string[]; directories?: string[]; patterns?: string[] };
     context?: { files?: string[] };
   }) => Promise<boolean>;
   getFileIndexingConfig: () => Promise<{ inclusion?: { directories?: string[] } }>;
+  loadFileIndexingConfig: () => Promise<void>;
   loadFiles: () => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// Use relative URL when not set so same-origin works (e.g. app at 127.0.0.1:8000)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -108,6 +113,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [exclusionPatterns, setExclusionPatterns] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [watcherPath, setWatcherPathState] = useState<string | null>(null);
+  const [userRoot, setUserRootState] = useState<string | null>(null);
   // General settings
   const [systemPrompt, setSystemPrompt] = useState<string>('You are a helpful AI assistant that provides accurate and detailed answers based on the provided context.');
   const [darkMode, setDarkMode] = useState<boolean>(false);
@@ -119,6 +125,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     loadContextFiles();
     loadFileIndexingConfig();
     loadWatcherPath();
+    loadUserRoot();
   }, []);
 
   const loadContextFiles = async () => {
@@ -190,6 +197,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const loadUserRoot = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/watcher/user-root`);
+      const data = await response.json();
+      setUserRootState(data?.user_root ?? null);
+    } catch (error) {
+      console.error('Failed to load user root:', error);
+      setUserRootState(null);
+    }
+  };
+
   const setWatcherPath = async (path: string) => {
     const trimmed = path.trim();
     if (!trimmed) return false;
@@ -212,6 +230,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return true;
     } catch (error) {
       console.error('Failed to set watcher path:', error);
+      throw error;
+    }
+  };
+
+  /** Open native folder picker (tkinter on backend); full path is added to inclusion or exclusion in YAML. */
+  const browseFolderForWatcher = async (type: 'inclusion' | 'exclusion' = 'inclusion'): Promise<{ path: string; status: string } | null> => {
+    try {
+      const url = `${API_BASE_URL}/watcher/browse?type=${encodeURIComponent(type)}`;
+      // Long timeout: backend blocks until user picks a folder in the native dialog
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+      const response = await fetch(url, { method: 'POST', signal: controller.signal });
+      clearTimeout(timeoutId);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || response.statusText);
+      }
+      if (type === 'inclusion') await loadWatcherPath();
+      await loadFileIndexingConfig();
+      return { path: data.path ?? '', status: data.status ?? '' };
+    } catch (error) {
+      console.error('Failed to browse folder:', error);
       throw error;
     }
   };
@@ -433,8 +473,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
       });
 
-      // Use inclusion folder (watcher path) as base so we store full paths in YAML
-      const base = (watcherPath ?? '').trim().replace(/\/$/, '');
+      // Base for full paths: watcher path if set, otherwise user home (so imports don't end up in project folder)
+      const base = (watcherPath ?? userRoot ?? '').trim().replace(/\/$/, '');
       const dirToAdd = base ? `${base}/${folderName}` : folderName;
       const toFullPath = (rel: string) => (base ? `${base}/${rel}` : rel);
       
@@ -538,14 +578,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setUserInfo,
         importFolder,
         setWatcherPath,
+        browseFolderForWatcher,
         addWatcherPath,
         removeWatcherPath,
         getActiveWatcherPaths,
         syncWatcherPaths,
         watcherPath,
         loadWatcherPath,
+        userRoot,
+        loadUserRoot,
         saveFileIndexingConfig,
         getFileIndexingConfig,
+        loadFileIndexingConfig,
         loadFiles,
       }}
     >

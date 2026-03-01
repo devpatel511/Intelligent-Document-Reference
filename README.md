@@ -31,6 +31,8 @@ If you prefer to set up manually, see the [Installation](#installation) section 
 - **Node.js 18+ and npm** - [Download Node.js](https://nodejs.org/)
 - **Git** (optional, for cloning the repository)
 
+**Folder picker (Browse in Settings):** The native folder picker needs a Python built with Tcl/Tk (tkinter). If you see "Folder picker not available", see [Using the folder picker (tkinter)](docs/TKINTER_SETUP.md) to install Python with tkinter and recreate the virtual environment.
+
 ### Automated Setup
 
 Run the setup script to automatically configure everything:
@@ -53,8 +55,6 @@ After setup, launch the application using the **virtual environment's Python** (
 ```
 
 On Windows: `.venv\Scripts\python app.py --webui`
-
-Alternatively, activate the venv first (`source .venv/bin/activate` on macOS/Linux, or `.venv\Scripts\activate` on Windows), then run `python app.py --webui`.
 
 ### Manual Setup
 
@@ -106,11 +106,19 @@ cd ..
 
 ### Launch Web UI
 
-After setup, launch the web interface:
+After setup, launch the web interface using the virtual environment’s Python (so dependencies like `uvicorn` are found):
 
+**macOS/Linux:**
 ```bash
-python3 app.py --webui
+.venv/bin/python app.py --webui
 ```
+
+**Windows:**
+```bash
+.venv\Scripts\python app.py --webui
+```
+
+**Using uv:** If you use [uv](https://github.com/astral-sh/uv), you can run without activating the venv (e.g. `uv run app.py --webui`); uv handles the environment.
 
 The application will be available at `http://127.0.0.1:8000`
 
@@ -130,6 +138,7 @@ python3 app.py [OPTIONS]
 Options:
   --setup          Set up the environment (install dependencies, build frontend)
   --webui          Launch the web UI with backend server
+  --dev            Development mode: backend (hot-reload) + frontend dev server (backend on --port, UI on 5173)
   --host HOST      Host to bind the server to (default: 127.0.0.1)
   --port PORT      Port to bind the server to (default: 8000)
   -h, --help       Show help message
@@ -193,28 +202,41 @@ If the frontend doesn't load:
 
 ### Running in Development Mode
 
-For frontend development with hot-reload:
+Use the **`--dev`** flag to run both the backend (with hot-reload) and the frontend dev server in one go. The backend runs on the usual port (default 8000), the UI on port 5173, and the frontend is configured to talk to the backend.
 
+**macOS/Linux:**
 ```bash
-cd ui
-npm run dev
+.venv/bin/python app.py --dev
 ```
 
-This will start the Vite dev server (typically on port 5173).
+**Windows:**
+```bash
+.venv\Scripts\python app.py --dev
+```
 
-For backend development, you can run the FastAPI server directly:
+Open http://localhost:5173 for the UI; API is at http://127.0.0.1:8000. Press Ctrl+C to stop both processes. You don’t need to run `npm run build` while using `--dev`; the dev server picks up frontend and backend changes automatically.
+
+If you prefer to run them separately (e.g. in two terminals), run the backend with:
 
 ```bash
-uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+.venv/bin/python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+and in another terminal:
+
+```bash
+cd ui && npm run dev
+```
+
+Set `VITE_API_BASE_URL=http://localhost:8000` in the environment if the frontend needs to point at the backend.
 
 ### Testing the inclusion folder (watcher)
 
-1. **Start the backend** (from project root):
+1. **Start the app** (from project root). For production-style single server:
    ```bash
    .venv/bin/python app.py --webui
    ```
-   Or for UI hot-reload: run the backend with `.venv/bin/uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000` and in another terminal run `cd ui && npm run dev` (UI on port 5173; set `VITE_API_BASE_URL=http://localhost:8000` if needed).
+   For development with hot-reload, use `--dev` (see [Running in Development Mode](#running-in-development-mode)).
 
 2. **In the browser**: Open the app (e.g. http://127.0.0.1:8000 or http://localhost:5173), go to **Settings** → **File Indexing**.
 
