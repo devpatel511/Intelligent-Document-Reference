@@ -84,7 +84,7 @@ class UnifiedDatabase:
                 if row["file_hash"] != file_hash:
                     cursor.execute(
                         """
-                        UPDATE files 
+                        UPDATE files
                         SET file_hash=?, size_bytes=?, last_modified_timestamp=?, status='outdated'
                         WHERE id=?
                         """,
@@ -209,12 +209,12 @@ class UnifiedDatabase:
 
             # Base query
             sql = """
-                SELECT 
-                    c.id, c.chunk_id, c.text_content, c.file_id, 
+                SELECT
+                    c.id, c.chunk_id, c.text_content, c.file_id,
                     vec_distance_cosine(v.embedding, ?) as distance
                 FROM vec_items v
                 JOIN chunks c ON v.rowid = c.id
-                WHERE v.embedding MATCH ? 
+                WHERE v.embedding MATCH ?
                   AND k = ?
             """
             params = [query_blob, query_blob, limit]

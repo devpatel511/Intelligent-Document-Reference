@@ -46,7 +46,7 @@ class FileRegistry:
             # Check for existing event for this file
             cursor.execute(
                 """
-                SELECT id FROM processing_queue 
+                SELECT id FROM processing_queue
                 WHERE file_path = ?
             """,
                 (path,),
@@ -57,7 +57,7 @@ class FileRegistry:
                 # Update timestamp
                 cursor.execute(
                     """
-                    UPDATE processing_queue 
+                    UPDATE processing_queue
                     SET timestamp = ?, event_type = ?
                     WHERE id = ?
                 """,
@@ -83,8 +83,8 @@ class FileRegistry:
 
             # Select oldest event
             cursor.execute("""
-                SELECT * FROM processing_queue 
-                ORDER BY timestamp ASC 
+                SELECT * FROM processing_queue
+                ORDER BY timestamp ASC
                 LIMIT 1
             """)
             row = cursor.fetchone()

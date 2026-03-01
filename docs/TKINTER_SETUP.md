@@ -41,7 +41,7 @@ Your default `python3` from Homebrew is often built **without** Tcl/Tk. The form
 
 ### Option B: Python from python.org
 
-1. Download the **macOS installer** from [python.org/downloads](https://www.python.org/downloads/).  
+1. Download the **macOS installer** from [python.org/downloads](https://www.python.org/downloads/).
    The official installer includes Tcl/Tk.
 
 2. Install it, then recreate the venv with that Python, for example:
@@ -59,11 +59,11 @@ Your default `python3` from Homebrew is often built **without** Tcl/Tk. The form
 
 ## Linux
 
-- **Debian/Ubuntu:**  
-  `sudo apt install python3-tk`  
+- **Debian/Ubuntu:**
+  `sudo apt install python3-tk`
   Then use `python3` as usual (it will have tkinter). Recreate `.venv` with that `python3` if needed.
 
-- **Fedora:**  
+- **Fedora:**
   `sudo dnf install python3-tkinter`
 
 After installing, recreate the venv with the same interpreter and reinstall deps if necessary.
