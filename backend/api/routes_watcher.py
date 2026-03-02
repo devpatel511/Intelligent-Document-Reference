@@ -128,7 +128,11 @@ def open_file_dialog():
             detail=result.stderr or "File picker failed. Enter file paths manually.",
         )
 
-    lines = [line.strip() for line in (result.stdout or "").strip().splitlines() if line.strip()]
+    lines = [
+        line.strip()
+        for line in (result.stdout or "").strip().splitlines()
+        if line.strip()
+    ]
     return lines
 
 

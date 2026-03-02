@@ -18,7 +18,9 @@ def main():
     root.withdraw()
     root.attributes("-topmost", True)
     initial_dir = os.path.abspath(os.path.expanduser("~"))
-    file_paths = filedialog.askopenfilenames(initialdir=initial_dir, title="Select files")
+    file_paths = filedialog.askopenfilenames(
+        initialdir=initial_dir, title="Select files"
+    )
     root.destroy()
 
     if file_paths:

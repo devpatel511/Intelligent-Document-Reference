@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 class SettingsStore:
@@ -25,13 +25,11 @@ class SettingsStore:
         """Create the settings table if it doesn't exist."""
         conn = self._get_conn()
         try:
-            conn.execute(
-                """CREATE TABLE IF NOT EXISTS settings (
+            conn.execute("""CREATE TABLE IF NOT EXISTS settings (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )"""
-            )
+                )""")
             conn.commit()
         finally:
             conn.close()

@@ -113,7 +113,11 @@ def _is_excluded(
         if fnmatch.fnmatch(name, pattern):
             return True
         # Also match directory patterns like "node_modules/" against directory names
-        if is_dir and pattern.endswith("/") and fnmatch.fnmatch(name, pattern.rstrip("/")):
+        if (
+            is_dir
+            and pattern.endswith("/")
+            and fnmatch.fnmatch(name, pattern.rstrip("/"))
+        ):
             return True
     return False
 
@@ -144,7 +148,9 @@ def build_file_tree(
             is_dir = item.is_dir()
 
             # Skip excluded items
-            if _is_excluded(abs_path, item.name, is_dir, excl_dirs, excl_files, excl_patterns):
+            if _is_excluded(
+                abs_path, item.name, is_dir, excl_dirs, excl_files, excl_patterns
+            ):
                 continue
 
             node = {
