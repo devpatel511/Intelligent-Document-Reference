@@ -1,8 +1,9 @@
 """File metadata endpoints."""
 
+import fnmatch
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import yaml
 from fastapi import APIRouter
@@ -87,11 +88,51 @@ class FileIndexingUpdate(BaseModel):
     context: Optional[Dict[str, List[str]]] = None
 
 
-def build_file_tree(path: str, base_path: str = "") -> list:
-    """Recursively build file tree structure with absolute paths."""
+def _is_excluded(
+    abs_path: str,
+    name: str,
+    is_dir: bool,
+    excluded_dirs: Set[str],
+    excluded_files: Set[str],
+    exclusion_patterns: List[str],
+) -> bool:
+    """Check if a path should be excluded based on exclusion config."""
+    normalized = abs_path.rstrip(os.sep)
+    # Check explicit directory exclusion
+    if is_dir and normalized in excluded_dirs:
+        return True
+    # Check if path is under an excluded directory
+    for excl_dir in excluded_dirs:
+        if normalized.startswith(excl_dir + os.sep):
+            return True
+    # Check explicit file exclusion
+    if not is_dir and normalized in excluded_files:
+        return True
+    # Check exclusion patterns (glob-style matching against the file/folder name)
+    for pattern in exclusion_patterns:
+        if fnmatch.fnmatch(name, pattern):
+            return True
+        # Also match directory patterns like "node_modules/" against directory names
+        if is_dir and pattern.endswith("/") and fnmatch.fnmatch(name, pattern.rstrip("/")):
+            return True
+    return False
+
+
+def build_file_tree(
+    path: str,
+    base_path: str = "",
+    excluded_dirs: Optional[Set[str]] = None,
+    excluded_files: Optional[Set[str]] = None,
+    exclusion_patterns: Optional[List[str]] = None,
+) -> list:
+    """Recursively build file tree structure with absolute paths, filtering exclusions."""
     full_path = Path(path)
     if not full_path.exists():
         return []
+
+    excl_dirs = excluded_dirs or set()
+    excl_files = excluded_files or set()
+    excl_patterns = exclusion_patterns or []
 
     nodes = []
     try:
@@ -100,15 +141,27 @@ def build_file_tree(path: str, base_path: str = "") -> list:
                 continue
 
             abs_path = str(item.resolve())
+            is_dir = item.is_dir()
+
+            # Skip excluded items
+            if _is_excluded(abs_path, item.name, is_dir, excl_dirs, excl_files, excl_patterns):
+                continue
+
             node = {
                 "id": abs_path.replace(os.sep, "_"),
                 "name": item.name,
-                "type": "folder" if item.is_dir() else "file",
+                "type": "folder" if is_dir else "file",
                 "path": abs_path,
             }
 
-            if item.is_dir():
-                children = build_file_tree(str(item), base_path or str(full_path))
+            if is_dir:
+                children = build_file_tree(
+                    str(item),
+                    base_path or str(full_path),
+                    excl_dirs,
+                    excl_files,
+                    excl_patterns,
+                )
                 if children:
                     node["children"] = children
 
@@ -128,11 +181,27 @@ async def list_files():
     if not inclusion_dirs:
         return {"files": []}
 
+    # Build exclusion sets from config
+    exclusion_cfg = config.get("exclusion", {})
+    excluded_dirs: Set[str] = {
+        os.path.abspath(os.path.expanduser(p)).rstrip(os.sep)
+        for p in (exclusion_cfg.get("directories", []) or [])
+        if p and p.strip()
+    }
+    excluded_files: Set[str] = {
+        os.path.abspath(os.path.expanduser(p)).rstrip(os.sep)
+        for p in (exclusion_cfg.get("files", []) or [])
+        if p and p.strip()
+    }
+    exclusion_patterns: List[str] = exclusion_cfg.get("patterns", []) or []
+
     all_nodes = []
     for dir_path in inclusion_dirs:
         if not dir_path or not Path(dir_path).exists():
             continue
-        tree = build_file_tree(dir_path, dir_path)
+        tree = build_file_tree(
+            dir_path, dir_path, excluded_dirs, excluded_files, exclusion_patterns
+        )
         if tree:
             resolved = str(Path(dir_path).resolve())
             dir_name = Path(dir_path).name

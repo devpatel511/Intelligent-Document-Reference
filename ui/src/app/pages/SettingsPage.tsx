@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatContext } from '@/app/contexts/ChatContext';
 import { ExclusionConfigDialog } from '@/app/components/ExclusionConfigDialog';
@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/ta
 import { RadioGroup, RadioGroupItem } from '@/app/components/ui/radio-group';
 import { Slider } from '@/app/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { ArrowLeft, Moon, Sun, Save, X } from 'lucide-react';
+import { ArrowLeft, Moon, Sun, Save, X, FolderOpen, FilePlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
@@ -36,6 +36,7 @@ export function SettingsPage() {
     syncWatcherPaths,
     indexedFiles,
     indexedDirectories,
+    toggleIndexedFile,
     excludedFiles,
     excludedDirectories,
     exclusionPatterns,
@@ -44,27 +45,17 @@ export function SettingsPage() {
     addExcludedDirectory,
     removeExcludedDirectory,
     saveFileIndexingConfig,
-    loadFileIndexingConfig,
-    getActiveWatcherPaths,
     saveSettings,
     saveSetting,
     pickFolder,
+    pickFiles,
   } = useChatContext();
 
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isBrowsingExclusion, setIsBrowsingExclusion] = useState(false);
-  const [activeWatcherPaths, setActiveWatcherPaths] = useState<string[]>([]);
-
-  // Show union of inclusion dirs and active watcher paths
-  const inclusionPaths = Array.from(
-    new Set([...indexedDirectories, ...activeWatcherPaths])
-  ).filter(Boolean);
-
-  useEffect(() => {
-    getActiveWatcherPaths().then(setActiveWatcherPaths);
-  }, []);
+  const [isBrowsingFiles, setIsBrowsingFiles] = useState(false);
 
   const handleDarkModeChange = async (enabled: boolean) => {
     setDarkMode(enabled);
@@ -89,11 +80,6 @@ export function SettingsPage() {
       const result = await pickFolder();
       if (result?.status === 'selected' && result.path) {
         addIndexedDirectory(result.path);
-        toast.success(`Folder added: ${result.path}`, {
-          description: 'Press Save Configuration to persist.',
-        });
-      } else if (result?.status === 'cancelled') {
-        // User closed the dialog without selecting
       } else if (result?.status === 'error') {
         toast.error('Could not use that folder.');
       }
@@ -104,17 +90,32 @@ export function SettingsPage() {
     }
   };
 
+  const handleBrowseFiles = async () => {
+    setIsBrowsingFiles(true);
+    try {
+      const result = await pickFiles();
+      if (result?.status === 'selected' && result.paths && result.paths.length > 0) {
+        for (const filePath of result.paths) {
+          if (!indexedFiles.includes(filePath)) {
+            toggleIndexedFile(filePath);
+          }
+        }
+      } else if (result?.status === 'error') {
+        toast.error('Could not pick files.');
+      }
+    } catch (err) {
+      toast.error(`Browse failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setIsBrowsingFiles(false);
+    }
+  };
+
   const handleBrowseExclusionFolder = async () => {
     setIsBrowsingExclusion(true);
     try {
       const result = await pickFolder();
       if (result?.status === 'selected' && result.path) {
         addExcludedDirectory(result.path);
-        toast.success(`Exclusion folder added: ${result.path}`, {
-          description: 'Press Save Configuration to persist.',
-        });
-      } else if (result?.status === 'cancelled') {
-        // User closed the dialog
       } else if (result?.status === 'error') {
         toast.error('Could not use that folder.');
       }
@@ -128,13 +129,9 @@ export function SettingsPage() {
   const handleSaveFileIndexing = async () => {
     setIsSaving(true);
     try {
-      // Collect all selected files (only files, not directories)
       const inclusionFiles = indexedFiles.filter(f => !f.endsWith('/'));
       const exclusionFiles = excludedFiles.filter(f => !f.endsWith('/'));
-      // Capture directories we're saving so we can sync to watcher even after state may reload
       const directoriesToSave = [...indexedDirectories];
-
-      // Get context files from indexed files that are selected
       const contextFiles = inclusionFiles;
 
       const success = await saveFileIndexingConfig({
@@ -153,12 +150,8 @@ export function SettingsPage() {
       });
 
       if (success) {
-        // Sync monitor_config with the inclusion list we just saved (no extra GET).
-        // Backend sets is_active=0 for paths not in this list, is_active=1 for paths in the list.
         try {
           await syncWatcherPaths(directoriesToSave);
-          const paths = await getActiveWatcherPaths();
-          setActiveWatcherPaths(paths);
         } catch (err) {
           console.warn('Watcher sync failed:', err);
           toast.warning(`Configuration saved. Watcher sync failed: ${err instanceof Error ? err.message : err}`);
@@ -376,7 +369,7 @@ export function SettingsPage() {
           </TabsContent>
 
           {/* File Indexing */}
-          <TabsContent value="indexing">
+          <TabsContent value="indexing" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle>Document Indexing</CardTitle>
@@ -396,21 +389,33 @@ export function SettingsPage() {
                         size="sm"
                         onClick={handleBrowseFolder}
                         disabled={isBrowsing}
-                        title="Open folder picker to choose a folder to include"
+                        title="Add a folder to include"
                         className="cursor-pointer"
                       >
-                        {isBrowsing ? 'Opening...' : 'Browse'}
+                        <FolderOpen className="h-4 w-4 mr-1" />
+                        {isBrowsing ? 'Opening...' : 'Add Folder'}
                       </Button>
-                      <span className="text-xs text-muted-foreground">Files to be indexed</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleBrowseFiles}
+                        disabled={isBrowsingFiles}
+                        title="Add individual files to include"
+                        className="cursor-pointer"
+                      >
+                        <FilePlus className="h-4 w-4 mr-1" />
+                        {isBrowsingFiles ? 'Opening...' : 'Add Files'}
+                      </Button>
                     </div>
                   </div>
 
-                  {/* Show imported / watched directories */}
-                  {inclusionPaths.length > 0 && (
+                  {/* Show included directories */}
+                  {indexedDirectories.length > 0 && (
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Included folders:</Label>
                       <div className="flex flex-wrap gap-2">
-                        {inclusionPaths.map((dir) => (
+                        {indexedDirectories.map((dir) => (
                           <div
                             key={dir}
                             className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-md border border-primary/20"
@@ -431,10 +436,32 @@ export function SettingsPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Show included individual files */}
                   {indexedFiles.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {indexedFiles.length} file{indexedFiles.length !== 1 ? 's' : ''} selected
-                    </p>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Included files:</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {indexedFiles.map((file) => (
+                          <div
+                            key={file}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-md border border-primary/20"
+                          >
+                            <span className="text-sm">{file.split('/').pop()}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 cursor-pointer"
+                              onClick={() => toggleIndexedFile(file)}
+                              title={file}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -449,13 +476,13 @@ export function SettingsPage() {
                         size="sm"
                         onClick={handleBrowseExclusionFolder}
                         disabled={isBrowsingExclusion}
-                        title="Open folder picker to choose a folder to exclude"
+                        title="Add a folder to exclude"
                         className="cursor-pointer"
                       >
+                        <FolderOpen className="h-4 w-4 mr-1" />
                         {isBrowsingExclusion ? 'Opening...' : 'Browse'}
                       </Button>
                       <ExclusionConfigDialog />
-                      <span className="text-xs text-muted-foreground">Files to be excluded</span>
                     </div>
                   </div>
 
@@ -494,7 +521,7 @@ export function SettingsPage() {
 
                 <div className="flex items-center justify-between pt-4 border-t">
                   <p className="text-sm text-muted-foreground">
-                    Included files will be used for retrieval-augmented generation, while excluded files will be ignored. You can upload entire folders or select individual files.
+                    Included files will be used for retrieval-augmented generation, while excluded files will be ignored.
                   </p>
                   <Button
                     onClick={handleSaveFileIndexing}

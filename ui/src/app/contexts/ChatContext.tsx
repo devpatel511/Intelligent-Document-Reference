@@ -101,6 +101,7 @@ interface ChatContextType {
   saveSettings: () => Promise<void>;
   saveSetting: (key: string, value: any) => Promise<void>;
   pickFolder: () => Promise<{ path: string; status: string } | null>;
+  pickFiles: () => Promise<{ paths: string[]; status: string } | null>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -315,6 +316,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return { path: data.path ?? '', status: data.status ?? '' };
     } catch (error) {
       console.error('Failed to pick folder:', error);
+      throw error;
+    }
+  };
+
+  /** Open native file picker and return the selected paths only (no backend persistence). */
+  const pickFiles = async (): Promise<{ paths: string[]; status: string } | null> => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+      const response = await fetch(`${API_BASE_URL}/watcher/pick-files`, {
+        method: 'POST',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || response.statusText);
+      }
+      return { paths: data.paths ?? [], status: data.status ?? '' };
+    } catch (error) {
+      console.error('Failed to pick files:', error);
       throw error;
     }
   };
@@ -718,6 +740,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         saveSettings,
         saveSetting,
         pickFolder,
+        pickFiles,
       }}
     >
       {children}

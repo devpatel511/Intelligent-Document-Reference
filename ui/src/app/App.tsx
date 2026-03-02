@@ -32,7 +32,7 @@ function AppContent() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
-      <Toaster theme={darkMode ? 'dark' : 'light'} position="bottom-right" richColors />
+      <Toaster theme={darkMode ? 'dark' : 'light'} position="top-right" richColors />
     </>
   );
 }
