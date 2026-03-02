@@ -87,8 +87,8 @@ class FileIndexingUpdate(BaseModel):
     context: Optional[Dict[str, List[str]]] = None
 
 
-def build_file_tree(path: str, base_path: str = "") -> Dict[str, Any]:
-    """Recursively build file tree structure."""
+def build_file_tree(path: str, base_path: str = "") -> list:
+    """Recursively build file tree structure with absolute paths."""
     full_path = Path(path)
     if not full_path.exists():
         return []
@@ -99,18 +99,12 @@ def build_file_tree(path: str, base_path: str = "") -> Dict[str, Any]:
             if item.name.startswith("."):
                 continue
 
-            relative_path = str(
-                item.relative_to(Path(base_path) if base_path else Path.cwd())
-            )
+            abs_path = str(item.resolve())
             node = {
-                "id": relative_path.replace(os.sep, "_"),
+                "id": abs_path.replace(os.sep, "_"),
                 "name": item.name,
                 "type": "folder" if item.is_dir() else "file",
-                "path": (
-                    f"/{relative_path}"
-                    if not relative_path.startswith("/")
-                    else relative_path
-                ),
+                "path": abs_path,
             }
 
             if item.is_dir():
@@ -127,10 +121,31 @@ def build_file_tree(path: str, base_path: str = "") -> Dict[str, Any]:
 
 @router.get("/")
 async def list_files():
-    """List available files in a tree structure."""
-    # Return empty file tree by default - user must import folders
-    # This prevents auto-importing the project folder
-    return {"files": []}
+    """List available files in a tree structure built from inclusion directories."""
+    config = load_file_indexing_config()
+    inclusion_dirs = config.get("inclusion", {}).get("directories", [])
+
+    if not inclusion_dirs:
+        return {"files": []}
+
+    all_nodes = []
+    for dir_path in inclusion_dirs:
+        if not dir_path or not Path(dir_path).exists():
+            continue
+        tree = build_file_tree(dir_path, dir_path)
+        if tree:
+            resolved = str(Path(dir_path).resolve())
+            dir_name = Path(dir_path).name
+            root_node = {
+                "id": resolved.replace(os.sep, "_"),
+                "name": dir_name,
+                "type": "folder",
+                "path": resolved,
+                "children": tree,
+            }
+            all_nodes.append(root_node)
+
+    return {"files": all_nodes}
 
 
 @router.get("/indexing")

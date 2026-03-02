@@ -90,6 +90,24 @@ def open_folder_dialog():
     return path if path else ""
 
 
+@router.post("/pick-folder")
+def pick_folder():
+    """Open native folder picker and return the selected path only (no persistence).
+
+    The caller is responsible for adding the path to local state and
+    persisting via the file-indexing save endpoint.
+    """
+    path = open_folder_dialog()
+    if not path or not path.strip():
+        return {"path": "", "status": "cancelled"}
+
+    clean_path = os.path.abspath(os.path.expanduser(path)).rstrip(os.sep)
+    if not os.path.exists(clean_path):
+        return {"path": clean_path, "status": "error", "detail": "Path does not exist"}
+
+    return {"path": clean_path, "status": "selected"}
+
+
 @router.post("/browse")
 def browse_folder(type: str = Query("inclusion", description="inclusion or exclusion")):
     """Open native folder picker (tkinter); get full path and add to inclusion or exclusion in YAML."""

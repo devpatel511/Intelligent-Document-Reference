@@ -66,7 +66,7 @@ export function ChatMessages() {
 
   return (
     <ScrollArea className="h-full" ref={scrollRef}>
-      <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         {messages.map((message) => (
           <div
             key={message.id}
@@ -102,8 +102,38 @@ export function ChatMessages() {
                   <CitationsList citations={message.citations} />
                 )}
               </div>
-              <div className="text-xs text-muted-foreground px-2">
-                {format(message.timestamp, 'HH:mm')}
+
+              {/* Citations */}
+              {message.role === 'assistant' && message.citations && message.citations.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Sources:</p>
+                  {message.citations.map((citation: Citation, idx: number) => (
+                    <div
+                      key={idx}
+                      className="flex items-start gap-2 text-xs bg-background rounded-md p-2 border"
+                    >
+                      <FileText className="h-3.5 w-3.5 mt-0.5 text-blue-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium truncate">{citation.file_name}</span>
+                          <span className="text-muted-foreground whitespace-nowrap">
+                            {Math.round(citation.relevance_score * 100)}% match
+                          </span>
+                        </div>
+                        <p className="text-muted-foreground mt-1 line-clamp-2">
+                          {citation.snippet}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center text-xs text-muted-foreground px-2">
+                <span>{format(message.timestamp, 'HH:mm')}</span>
+                {message.role === 'assistant' && message.processingTimeMs !== undefined && (
+                  <span className="ml-2">({message.processingTimeMs}ms)</span>
+                )}
               </div>
             </div>
 

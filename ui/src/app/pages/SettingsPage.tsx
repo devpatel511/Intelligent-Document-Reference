@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from '@/app/components/ui/radio-group';
 import { Slider } from '@/app/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { ArrowLeft, Moon, Sun, Save, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -32,26 +33,26 @@ export function SettingsPage() {
     setDarkMode,
     userInfo,
     setUserInfo,
-    browseFolderForWatcher,
     syncWatcherPaths,
     indexedFiles,
     indexedDirectories,
     excludedFiles,
     excludedDirectories,
     exclusionPatterns,
-    toggleIndexedFile,
-    toggleExcludedFile,
     addIndexedDirectory,
     removeIndexedDirectory,
-    removeWatcherPath,
     addExcludedDirectory,
     removeExcludedDirectory,
     saveFileIndexingConfig,
     loadFileIndexingConfig,
     getActiveWatcherPaths,
+    saveSettings,
+    saveSetting,
+    pickFolder,
   } = useChatContext();
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isBrowsingExclusion, setIsBrowsingExclusion] = useState(false);
   const [activeWatcherPaths, setActiveWatcherPaths] = useState<string[]>([]);
@@ -65,22 +66,39 @@ export function SettingsPage() {
     getActiveWatcherPaths().then(setActiveWatcherPaths);
   }, []);
 
+  const handleDarkModeChange = async (enabled: boolean) => {
+    setDarkMode(enabled);
+    await saveSetting('darkMode', enabled);
+  };
+
+  const handleSaveSettings = async () => {
+    setIsSavingSettings(true);
+    try {
+      await saveSettings();
+      toast.success('Settings saved successfully!');
+    } catch (error) {
+      toast.error(`Error saving settings: ${error}`);
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   const handleBrowseFolder = async () => {
     setIsBrowsing(true);
     try {
-      const result = await browseFolderForWatcher();
-      if (result?.status === 'added' && result.path) {
-        await loadFileIndexingConfig();
-        const paths = await getActiveWatcherPaths();
-        setActiveWatcherPaths(paths);
-        alert(`Folder added: ${result.path}`);
+      const result = await pickFolder();
+      if (result?.status === 'selected' && result.path) {
+        addIndexedDirectory(result.path);
+        toast.success(`Folder added: ${result.path}`, {
+          description: 'Press Save Configuration to persist.',
+        });
       } else if (result?.status === 'cancelled') {
         // User closed the dialog without selecting
       } else if (result?.status === 'error') {
-        alert(`Could not use that folder.`);
+        toast.error('Could not use that folder.');
       }
     } catch (err) {
-      alert(`Browse failed: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Browse failed: ${err instanceof Error ? err.message : err}`);
     } finally {
       setIsBrowsing(false);
     }
@@ -89,16 +107,19 @@ export function SettingsPage() {
   const handleBrowseExclusionFolder = async () => {
     setIsBrowsingExclusion(true);
     try {
-      const result = await browseFolderForWatcher('exclusion');
-      if (result?.status === 'added' && result.path) {
-        alert(`Exclusion folder added: ${result.path}`);
+      const result = await pickFolder();
+      if (result?.status === 'selected' && result.path) {
+        addExcludedDirectory(result.path);
+        toast.success(`Exclusion folder added: ${result.path}`, {
+          description: 'Press Save Configuration to persist.',
+        });
       } else if (result?.status === 'cancelled') {
         // User closed the dialog
       } else if (result?.status === 'error') {
-        alert(`Could not use that folder.`);
+        toast.error('Could not use that folder.');
       }
     } catch (err) {
-      alert(`Browse failed: ${err instanceof Error ? err.message : err}`);
+      toast.error(`Browse failed: ${err instanceof Error ? err.message : err}`);
     } finally {
       setIsBrowsingExclusion(false);
     }
@@ -136,19 +157,21 @@ export function SettingsPage() {
         // Backend sets is_active=0 for paths not in this list, is_active=1 for paths in the list.
         try {
           await syncWatcherPaths(directoriesToSave);
+          const paths = await getActiveWatcherPaths();
+          setActiveWatcherPaths(paths);
         } catch (err) {
           console.warn('Watcher sync failed:', err);
-          alert(`Configuration saved. Watcher sync failed: ${err instanceof Error ? err.message : err}`);
+          toast.warning(`Configuration saved. Watcher sync failed: ${err instanceof Error ? err.message : err}`);
         }
       }
 
       if (success) {
-        alert('File indexing configuration saved successfully!');
+        toast.success('File indexing configuration saved successfully!');
       } else {
-        alert('Failed to save file indexing configuration.');
+        toast.error('Failed to save file indexing configuration.');
       }
     } catch (error) {
-      alert(`Error saving configuration: ${error}`);
+      toast.error(`Error saving configuration: ${error}`);
     } finally {
       setIsSaving(false);
     }
@@ -170,10 +193,10 @@ export function SettingsPage() {
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <Tabs defaultValue="general" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="general">General Settings</TabsTrigger>
-            <TabsTrigger value="models">Model Configuration</TabsTrigger>
-            <TabsTrigger value="indexing">File Indexing</TabsTrigger>
-            <TabsTrigger value="advanced">Advanced Settings</TabsTrigger>
+            <TabsTrigger value="general" className="cursor-pointer">General Settings</TabsTrigger>
+            <TabsTrigger value="models" className="cursor-pointer">Model Configuration</TabsTrigger>
+            <TabsTrigger value="indexing" className="cursor-pointer">File Indexing</TabsTrigger>
+            <TabsTrigger value="advanced" className="cursor-pointer">Advanced Settings</TabsTrigger>
           </TabsList>
 
           {/* General Settings */}
@@ -196,7 +219,8 @@ export function SettingsPage() {
                     <Switch
                       id="dark-mode"
                       checked={darkMode}
-                      onCheckedChange={setDarkMode}
+                      onCheckedChange={handleDarkModeChange}
+                      className="cursor-pointer"
                     />
                   </div>
                 </div>
@@ -250,6 +274,17 @@ export function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <div className="flex justify-end">
+              <Button onClick={handleSaveSettings} disabled={isSavingSettings} className="cursor-pointer">
+                {isSavingSettings ? 'Saving...' : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Settings
+                  </>
+                )}
+              </Button>
+            </div>
           </TabsContent>
 
           {/* Model Configuration */}
@@ -268,11 +303,11 @@ export function SettingsPage() {
                   className="gap-4"
                 >
                   <div className="flex items-center space-x-2 border border-input rounded-lg p-4 cursor-pointer hover:bg-accent">
-                    <RadioGroupItem value="online" id="online" className="border-black" />
+                    <RadioGroupItem value="online" id="online" className="border-black cursor-pointer" />
                     <Label htmlFor="online" className="cursor-pointer flex-1">Online Models</Label>
                   </div>
                   <div className="flex items-center space-x-2 border border-input rounded-lg p-4 cursor-pointer hover:bg-accent">
-                    <RadioGroupItem value="local" id="local" className="border-black" />
+                    <RadioGroupItem value="local" id="local" className="border-black cursor-pointer" />
                     <Label htmlFor="local" className="cursor-pointer flex-1">Local Models</Label>
                   </div>
                 </RadioGroup>
@@ -327,6 +362,17 @@ export function SettingsPage() {
                 )}
               </CardContent>
             </Card>
+
+            <div className="flex justify-end">
+              <Button onClick={handleSaveSettings} disabled={isSavingSettings} className="cursor-pointer">
+                {isSavingSettings ? 'Saving...' : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Settings
+                  </>
+                )}
+              </Button>
+            </div>
           </TabsContent>
 
           {/* File Indexing */}
@@ -353,7 +399,7 @@ export function SettingsPage() {
                         title="Open folder picker to choose a folder to include"
                         className="cursor-pointer"
                       >
-                        {isBrowsing ? 'Opening…' : 'Browse'}
+                        {isBrowsing ? 'Opening...' : 'Browse'}
                       </Button>
                       <span className="text-xs text-muted-foreground">Files to be indexed</span>
                     </div>
@@ -362,7 +408,7 @@ export function SettingsPage() {
                   {/* Show imported / watched directories */}
                   {inclusionPaths.length > 0 && (
                     <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">Included folders (watched):</Label>
+                      <Label className="text-xs text-muted-foreground">Included folders:</Label>
                       <div className="flex flex-wrap gap-2">
                         {inclusionPaths.map((dir) => (
                           <div
@@ -374,17 +420,9 @@ export function SettingsPage() {
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-5 w-5"
-                              onClick={async () => {
-                                removeIndexedDirectory(dir);
-                                try {
-                                  await removeWatcherPath(dir);
-                                  const paths = await getActiveWatcherPaths();
-                                  setActiveWatcherPaths(paths);
-                                } catch (e) {
-                                  console.warn('Watcher remove failed:', e);
-                                }
-                              }}
+                              className="h-5 w-5 cursor-pointer"
+                              onClick={() => removeIndexedDirectory(dir)}
+                              title="Remove from inclusion"
                             >
                               <X className="h-3 w-3" />
                             </Button>
@@ -414,13 +452,13 @@ export function SettingsPage() {
                         title="Open folder picker to choose a folder to exclude"
                         className="cursor-pointer"
                       >
-                        {isBrowsingExclusion ? 'Opening…' : 'Browse'}
+                        {isBrowsingExclusion ? 'Opening...' : 'Browse'}
                       </Button>
                       <ExclusionConfigDialog />
                       <span className="text-xs text-muted-foreground">Files to be excluded</span>
                     </div>
                   </div>
-                  
+
                   {/* Show excluded directories */}
                   {excludedDirectories.length > 0 && (
                     <div className="space-y-2">
@@ -436,7 +474,7 @@ export function SettingsPage() {
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-5 w-5"
+                              className="h-5 w-5 cursor-pointer"
                               onClick={() => removeExcludedDirectory(dir)}
                               title="Remove from exclusion"
                             >
@@ -465,7 +503,7 @@ export function SettingsPage() {
                   >
                     {isSaving ? (
                       <>
-                        <span className="animate-spin mr-2">⏳</span>
+                        <span className="animate-spin mr-2">&#8987;</span>
                         Saving...
                       </>
                     ) : (
@@ -503,6 +541,7 @@ export function SettingsPage() {
                       step={0.1}
                       value={[temperature]}
                       onValueChange={(value) => setTemperature(value[0])}
+                      className="cursor-pointer"
                     />
                     <p className="text-sm text-muted-foreground">
                       Controls randomness. Lower values make output more focused and
@@ -522,6 +561,7 @@ export function SettingsPage() {
                       step={1024}
                       value={[contextSize]}
                       onValueChange={(value) => setContextSize(value[0])}
+                      className="cursor-pointer"
                     />
                     <p className="text-sm text-muted-foreground">
                       Maximum number of tokens to use for context window.
@@ -553,6 +593,17 @@ export function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <div className="flex justify-end">
+              <Button onClick={handleSaveSettings} disabled={isSavingSettings} className="cursor-pointer">
+                {isSavingSettings ? 'Saving...' : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Settings
+                  </>
+                )}
+              </Button>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

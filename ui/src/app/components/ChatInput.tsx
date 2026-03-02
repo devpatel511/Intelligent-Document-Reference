@@ -31,12 +31,11 @@ const modelLabels = {
 };
 
 export function ChatInput() {
-  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles, pipelineReady, indexedChunkCount } =
+  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles, indexedDirectories } =
     useChatContext();
   const [input, setInput] = useState('');
-  
-  // Allow chatting if either the YAML config lists files OR the backend has indexed chunks
-  const canChat = indexedFiles.length > 0 || (pipelineReady && indexedChunkCount > 0);
+
+  const hasIndexedContent = indexedFiles.length > 0 || indexedDirectories.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +53,7 @@ export function ChatInput() {
     }
   };
 
-  if (!canChat) {
+  if (!hasIndexedContent) {
     return (
       <div className="space-y-3">
         <div className="relative">
@@ -88,14 +87,14 @@ export function ChatInput() {
         
         <div className="absolute bottom-2 left-2 right-2 flex items-center gap-2">
           <Select value={inferenceMode} onValueChange={(value) => setInferenceMode(value as InferenceMode)}>
-            <SelectTrigger className="w-[160px] h-9 border-black">
+            <SelectTrigger className="w-[160px] h-9 border-black cursor-pointer">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {(Object.keys(modeIcons) as InferenceMode[]).map((mode) => {
                 const Icon = modeIcons[mode];
                 return (
-                  <SelectItem key={mode} value={mode}>
+                  <SelectItem key={mode} value={mode} className="cursor-pointer">
                     <div className="flex items-center gap-2">
                       <Icon className="h-4 w-4" />
                       <span>{modeLabels[mode]}</span>
@@ -107,12 +106,12 @@ export function ChatInput() {
           </Select>
 
           <Select value={selectedModel} onValueChange={(value) => setSelectedModel(value as ModelType)}>
-            <SelectTrigger className="w-[160px] h-9 border-black">
+            <SelectTrigger className="w-[160px] h-9 border-black cursor-pointer">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {(Object.keys(modelLabels) as ModelType[]).map((model) => (
-                <SelectItem key={model} value={model}>
+                <SelectItem key={model} value={model} className="cursor-pointer">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4" />
                     <span>{modelLabels[model]}</span>
@@ -123,8 +122,8 @@ export function ChatInput() {
           </Select>
 
           <div className="flex-1" />
-          
-          <Button type="submit" size="sm" disabled={!input.trim()}>
+
+          <Button type="submit" size="sm" disabled={!input.trim()} className="cursor-pointer">
             <Send className="h-4 w-4 mr-2" />
             Send
           </Button>
