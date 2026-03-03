@@ -8,7 +8,6 @@ from core.context import AppContext
 from jobs import JobQueue, transition_state
 
 import os
-import asyncio
 from ingestion.change_detector import determine_strategy, ReindexStrategy
 
 logger = logging.getLogger(__name__)
