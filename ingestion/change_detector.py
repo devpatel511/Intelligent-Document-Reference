@@ -1,16 +1,18 @@
 import hashlib
-import os
 import logging
+import os
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
 class ReindexStrategy(Enum):
-    SKIP = "skip"                # No action needed
-    FULL_INDEX = "full_index"    # Extract, chunk, and embed
-    METADATA_UPDATE = "metadata_update" # Update path/mtime only
-    PURGE = "purge"              # Remove from DB and Vector store
+    SKIP = "skip"  # No action needed
+    FULL_INDEX = "full_index"  # Extract, chunk, and embed
+    METADATA_UPDATE = "metadata_update"  # Update path/mtime only
+    PURGE = "purge"  # Remove from DB and Vector store
+
 
 def calculate_file_hash(path: str) -> str:
     """Calculates SHA-256 hash of file content to detect actual changes."""
@@ -24,11 +26,10 @@ def calculate_file_hash(path: str) -> str:
     except (FileNotFoundError, PermissionError, OSError) as e:
         logger.error(f"Failed to hash file at {path}: {e}")
         return None
-    
+
+
 def determine_strategy(
-    file_path: str, 
-    db_record: Optional[dict], 
-    event_type: str = "modified"
+    file_path: str, db_record: Optional[dict], event_type: str = "modified"
 ) -> ReindexStrategy:
     """
     Determines how to handle a file based on disk state and DB records.
@@ -49,7 +50,7 @@ def determine_strategy(
 
     # 4. Content Check: Only hash if mtime suggests a change
     current_hash = calculate_file_hash(file_path)
-    
+
     # If hashing failed (e.g. file locked), skip for now to retry later
     if current_hash is None:
         return ReindexStrategy.SKIP
@@ -58,4 +59,3 @@ def determine_strategy(
         return ReindexStrategy.METADATA_UPDATE
 
     return ReindexStrategy.FULL_INDEX
-
