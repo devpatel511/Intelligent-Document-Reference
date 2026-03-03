@@ -1,5 +1,7 @@
-from ingestion.change_detector import ReindexStrategy, determine_strategy
 import os
+
+from ingestion.change_detector import ReindexStrategy, determine_strategy
+
 
 def test_new_file_strategy():
     """Verify that a file not in DB triggers a full index."""
