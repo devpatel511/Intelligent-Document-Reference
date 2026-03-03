@@ -8,10 +8,11 @@ def test_new_file_strategy(tmp_path):
     # Create a real file so os.path.exists(file_path) is True
     f = tmp_path / "some_new_file.txt"
     f.write_text("new file content")
-    
-    # Now that the file exists, it will bypass the PURGE check 
+
+    # Now that the file exists, it will bypass the PURGE check
     # and hit the 'if not db_record' rule.
     assert determine_strategy(str(f), None) == ReindexStrategy.FULL_INDEX
+
 
 def test_identical_file_strategy(tmp_path):
     """Verify that identical content returns SKIP or METADATA_UPDATE."""
@@ -21,7 +22,8 @@ def test_identical_file_strategy(tmp_path):
     # Mock DB record with same hash and older timestamp
     db_record = {
         "file_hash": "ed7002b479e9ac567e5029a696a744e66bdc3a272051214c519faef045505102",
-        "last_modified_timestamp": os.path.getmtime(f) + 10, # Future mtime to trigger SKIP
+        "last_modified_timestamp": os.path.getmtime(f)
+        + 10,  # Future mtime to trigger SKIP
     }
 
     # If mtime is newer in DB, it should SKIP
