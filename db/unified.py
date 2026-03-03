@@ -254,13 +254,17 @@ class UnifiedDatabase:
             return None
         finally:
             conn.close()
-    def search_with_metadata(self, query_vector, limit=5, file_id=None):
-        """Refined search to join files for path-based citations."""
+
+
+    def search_with_metadata(self, query_vector: List[float], limit: int = 5,
+                              file_id: Optional[int] = None):
+        """Joins chunks with files to provide the 'file_path' required for citations."""
         conn = self._get_conn()
         try:
             query_blob = sqlite_vec.serialize_float32(query_vector)
+            
             sql = """
-                SELECT c.id, c.chunk_id, c.text_content, c.file_id, f.path as file_path,
+                SELECT c.id, c.text_content, f.path as file_path, 
                     vec_distance_cosine(v.embedding, ?) as distance
                 FROM vec_items v
                 JOIN chunks c ON v.rowid = c.id
@@ -271,7 +275,8 @@ class UnifiedDatabase:
             if file_id:
                 sql += " AND c.file_id = ?"
                 params.append(file_id)
-            sql += " ORDER BY distance"
-            return [dict(row) for row in conn.execute(sql, params).fetchall()]
+                
+            return [dict(row) for row in 
+                    conn.execute(sql + " ORDER BY distance", params).fetchall()]
         finally:
             conn.close()
