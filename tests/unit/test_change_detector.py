@@ -1,6 +1,4 @@
 import os
-
-
 from ingestion.change_detector import ReindexStrategy, determine_strategy
 
 
