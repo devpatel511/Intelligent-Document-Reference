@@ -86,5 +86,5 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status_priority
 -- 7. Vector Table (sqlite-vec)
 -- rowid of this table will MATCH rowid (id) of 'chunks' table
 CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
-    embedding float[1024]
+    embedding float[3072]
 );

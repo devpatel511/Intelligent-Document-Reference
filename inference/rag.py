@@ -1,4 +1,6 @@
-"""RAG prompt builder and orchestration (stub)."""
+"""RAG prompt builder and orchestration."""
+
+import asyncio
 from typing import Any, Dict, List
 
 
@@ -7,23 +9,29 @@ class RAGProcessor:
         self.client = inference_client
 
     def build_prompt(self, query: str, chunks: List[Dict[str, Any]]) -> str:
-        # Structured formatting ensures the LLM can distinguish between 
-        # different sources for citations 
+        """Build a retrieval-augmented prompt with source attributions."""
         context_str = ""
         for c in chunks:
-            context_str += f"\n[SOURCE: {c['file_path']}]\nCONTENT: {c['text_content']}\n"
-            
-        return f"""You are a professional assistant. Use the context below to answer accurately.
-        Every claim MUST cite its source path in brackets, e.g., (Source: /docs/notes.pdf).
-        
-        CONTEXT:
-        {context_str}
-        
-        USER QUESTION: {query}
-        ANSWER:"""
+            context_str += (
+                f"\n[SOURCE: {c['file_path']}]\n"
+                f"CONTENT: {c['text_content']}\n"
+            )
 
-    async def generate_response(self, query: str, 
-                                chunks: List[Dict[str, Any]]) -> str:
+        return (
+            "You are a professional assistant. Use the context below to answer "
+            "accurately.\nEvery claim MUST cite its source path in brackets, "
+            "e.g., (Source: /docs/notes.pdf).\n\n"
+            f"CONTEXT:\n{context_str}\n\n"
+            f"USER QUESTION: {query}\nANSWER:"
+        )
+
+    async def generate_response(
+        self, query: str, chunks: List[Dict[str, Any]]
+    ) -> str:
+        """Generate an LLM response from retrieved chunks.
+
+        Wraps the synchronous client.generate call in asyncio.to_thread
+        so the event loop is not blocked.
+        """
         prompt = self.build_prompt(query, chunks)
-        # Final inference step to synthesize the answer with citations
-        return await self.client.generate(prompt)
+        return await asyncio.to_thread(self.client.generate, prompt)
