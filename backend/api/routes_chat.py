@@ -35,7 +35,9 @@ async def status(ctx: AppContext = Depends(get_context)):
         try:
             conn = ctx.db._get_conn()
             try:
-                row = conn.execute("SELECT COUNT(*) as cnt FROM files WHERE status='indexed'").fetchone()
+                row = conn.execute(
+                    "SELECT COUNT(*) as cnt FROM files WHERE status='indexed'"
+                ).fetchone()
                 indexed_files = row["cnt"] if row else 0
                 row = conn.execute("SELECT COUNT(*) as cnt FROM chunks").fetchone()
                 indexed_chunks = row["cnt"] if row else 0
@@ -47,8 +49,12 @@ async def status(ctx: AppContext = Depends(get_context)):
         "ready": ready,
         "indexed_files": indexed_files,
         "indexed_chunks": indexed_chunks,
-        "embedding_backend": ctx.settings.default_embedding_backend if ctx.settings else None,
-        "inference_backend": ctx.settings.default_inference_backend if ctx.settings else None,
+        "embedding_backend": (
+            ctx.settings.default_embedding_backend if ctx.settings else None
+        ),
+        "inference_backend": (
+            ctx.settings.default_inference_backend if ctx.settings else None
+        ),
     }
 
 

@@ -1,12 +1,11 @@
 """High-level responder used by backend chat endpoints."""
 
-import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from inference.retriever import Retriever
-from inference.rag import RAGProcessor
 from inference.citation import format_citations
+from inference.rag import RAGProcessor
+from inference.retriever import Retriever
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +17,9 @@ class Responder:
         self.retriever = Retriever(db=db, embedding_client=embedding_client)
         self.rag = RAGProcessor(inference_client=inference_client)
 
-    async def respond(self, query: str, *, top_k: int = 5,
-                      folder_id: Optional[int] = None) -> Dict[str, Any]:
+    async def respond(
+        self, query: str, *, top_k: int = 5, folder_id: Optional[int] = None
+    ) -> Dict[str, Any]:
         """Run the full retrieve-then-generate pipeline.
 
         Args:

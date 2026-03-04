@@ -13,8 +13,7 @@ class RAGProcessor:
         context_str = ""
         for c in chunks:
             context_str += (
-                f"\n[SOURCE: {c['file_path']}]\n"
-                f"CONTENT: {c['text_content']}\n"
+                f"\n[SOURCE: {c['file_path']}]\n" f"CONTENT: {c['text_content']}\n"
             )
 
         return (
@@ -25,9 +24,7 @@ class RAGProcessor:
             f"USER QUESTION: {query}\nANSWER:"
         )
 
-    async def generate_response(
-        self, query: str, chunks: List[Dict[str, Any]]
-    ) -> str:
+    async def generate_response(self, query: str, chunks: List[Dict[str, Any]]) -> str:
         """Generate an LLM response from retrieved chunks.
 
         Wraps the synchronous client.generate call in asyncio.to_thread

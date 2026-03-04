@@ -19,17 +19,15 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from dotenv import load_dotenv
-load_dotenv()
 
 from db.unified import UnifiedDatabase
-from model_clients.google_client import GoogleEmbeddingClient, GoogleInferenceClient
 from inference.responder import Responder
+from model_clients.google_client import GoogleEmbeddingClient, GoogleInferenceClient
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+load_dotenv()
 # ── Sample documents ─────────────────────────────────────────────────────────
-
 SAMPLE_FILES = [
     {
         "path": "/docs/python_guide.md",
@@ -78,7 +76,9 @@ async def main():
 
             texts = file_info["chunks"]
             embeddings = embedder.embed_text(texts)
-            print(f"  Embedded {len(texts)} chunks from {fpath}  (dim={len(embeddings[0])})")
+            print(
+                f"  Embedded {len(texts)} chunks from {fpath}  (dim={len(embeddings[0])})"
+            )
 
             chunks = [
                 {
@@ -105,7 +105,7 @@ async def main():
         responder = Responder(db=db, embedding_client=embedder, inference_client=llm)
 
         for i, q in enumerate(queries, start=1):
-            print(f"[{i+1}/3] Query: \"{q}\"")
+            print(f'[{i+1}/3] Query: "{q}"')
             result = await responder.respond(q, top_k=3)
 
             print(f"  Answer: {result['answer'][:300]}")

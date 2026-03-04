@@ -1,7 +1,7 @@
 """Google Gemini client for embeddings and inference via AI Studio."""
 
-import os
 import logging
+import os
 from typing import List, Optional
 
 from dotenv import load_dotenv
@@ -29,7 +29,9 @@ class GoogleEmbeddingClient(EmbeddingClient):
             raise ImportError(
                 "google-genai package is required. Install with: pip install google-genai"
             )
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        self.api_key = (
+            api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        )
         if not self.api_key:
             raise ValueError(
                 "Google API key is required. Set GEMINI_API_KEY in .env or pass api_key."
@@ -68,7 +70,9 @@ class GoogleInferenceClient(InferenceClient):
             raise ImportError(
                 "google-genai package is required. Install with: pip install google-genai"
             )
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        self.api_key = (
+            api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        )
         if not self.api_key:
             raise ValueError(
                 "Google API key is required. Set GEMINI_API_KEY in .env or pass api_key."

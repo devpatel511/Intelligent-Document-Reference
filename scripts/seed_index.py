@@ -7,14 +7,14 @@ Usage:
 import sys
 from pathlib import Path
 
+from config.settings import load_settings
+from db.unified import UnifiedDatabase
+from ingestion.pipeline import PipelineConfig, run
+from model_clients.registry import ClientRegistry
+
 # Ensure project root is on sys.path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-
-from config.settings import load_settings
-from db.unified import UnifiedDatabase
-from model_clients.registry import ClientRegistry
-from ingestion.pipeline import run, PipelineConfig
 
 
 def main():
@@ -22,7 +22,9 @@ def main():
     db = UnifiedDatabase(db_path=settings.unified_db_path)
 
     print(f"Embedding backend: {settings.default_embedding_backend}")
-    embedding_client = ClientRegistry.get_client("embedding", settings.default_embedding_backend)
+    embedding_client = ClientRegistry.get_client(
+        "embedding", settings.default_embedding_backend
+    )
     embedder = embedding_client.embed_text  # List[str] -> List[List[float]]
 
     # Gather files to index
@@ -80,7 +82,9 @@ def main():
                     )
                 ],
             )
-            print(f"OK  ({result.final_chunk_count} chunks, {len(result.embeddings)} vectors)")
+            print(
+                f"OK  ({result.final_chunk_count} chunks, {len(result.embeddings)} vectors)"
+            )
         except Exception as e:
             print(f"FAILED: {e}")
 
@@ -89,7 +93,7 @@ def main():
     try:
         files_count = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
         chunks_count = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-        print(f"\n--- Database totals ---")
+        print("\n--- Database totals ---")
         print(f"Files:  {files_count}")
         print(f"Chunks: {chunks_count}")
     finally:

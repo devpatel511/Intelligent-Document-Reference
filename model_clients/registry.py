@@ -47,9 +47,7 @@ class ClientRegistry:
 
         if backend == "voyage":
             if kind == "embedding":
-                return VoyageEmbeddingClient(
-                    api_key=settings.voyage_api_key or None
-                )
+                return VoyageEmbeddingClient(api_key=settings.voyage_api_key or None)
             raise ValueError(f"Voyage backend only supports embedding, not {kind}")
 
         raise ValueError(

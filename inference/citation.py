@@ -19,8 +19,10 @@ def format_citations(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         path = chunk.get("file_path", "unknown")
         if path not in seen:
             seen.add(path)
-            citations.append({
-                "file_path": path,
-                "relevance": round(1.0 - chunk.get("distance", 0.0), 4),
-            })
+            citations.append(
+                {
+                    "file_path": path,
+                    "relevance": round(1.0 - chunk.get("distance", 0.0), 4),
+                }
+            )
     return citations

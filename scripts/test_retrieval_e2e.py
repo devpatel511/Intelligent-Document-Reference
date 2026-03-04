@@ -23,9 +23,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from db.unified import UnifiedDatabase
-from inference.retriever import Retriever
-from inference.rag import RAGProcessor
-from inference.citation import format_citations
 from inference.responder import Responder
 
 # ── Tiny helpers ─────────────────────────────────────────────────────────────
@@ -147,7 +144,7 @@ async def main():
         )
 
         for i, q in enumerate(queries, start=2):
-            print(f"[{i}/4] Query: \"{q}\"")
+            print(f'[{i}/4] Query: "{q}"')
             result = await responder.respond(q, top_k=3)
 
             print(f"       Answer: {result['answer'][:200]}")

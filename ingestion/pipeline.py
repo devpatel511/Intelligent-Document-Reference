@@ -455,8 +455,14 @@ def run_index(path: str, ctx=None) -> None:
     """Index a file or directory. Uses ingestion pipeline (final chunks → embed → store)."""
     db = getattr(ctx, "db", None) or (getattr(ctx, "unified_db", None) if ctx else None)
     # Support both ctx.embedder (legacy) and ctx.embedding_client (AppContext)
-    embedder_obj = getattr(ctx, "embedder", None) or getattr(ctx, "embedding_client", None)
-    embedder = embedder_obj.embed_text if embedder_obj and hasattr(embedder_obj, "embed_text") else None
+    embedder_obj = getattr(ctx, "embedder", None) or getattr(
+        ctx, "embedding_client", None
+    )
+    embedder = (
+        embedder_obj.embed_text
+        if embedder_obj and hasattr(embedder_obj, "embed_text")
+        else None
+    )
     config = getattr(ctx, "pipeline_config", None) or PipelineConfig(
         embed_after_chunk=True, dedup_enabled=True
     )

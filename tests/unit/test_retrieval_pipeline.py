@@ -4,9 +4,9 @@ Uses lightweight mocks so no real Ollama / OpenAI / DB is needed.
 """
 
 import sys
-import asyncio
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 # Provide a stub for sqlite_vec so importing db.unified doesn't fail
 # when the native extension is not installed.
@@ -15,11 +15,10 @@ if "sqlite_vec" not in sys.modules:
     _sv.serialize_float32 = lambda v: b"\x00"
     sys.modules["sqlite_vec"] = _sv
 
-from inference.retriever import Retriever
-from inference.rag import RAGProcessor
 from inference.citation import format_citations
+from inference.rag import RAGProcessor
 from inference.responder import Responder
-
+from inference.retriever import Retriever
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -58,7 +57,9 @@ class FakeInferenceClient:
     """Returns a canned answer."""
 
     def generate(self, prompt, **kwargs):
-        return "Python was created by Guido van Rossum (Source: /docs/python_history.md)."
+        return (
+            "Python was created by Guido van Rossum (Source: /docs/python_history.md)."
+        )
 
 
 class FakeDB:
