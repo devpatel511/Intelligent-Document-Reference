@@ -19,4 +19,28 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/chat': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/files': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/jobs': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/settings': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/watcher': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
+  },
 })

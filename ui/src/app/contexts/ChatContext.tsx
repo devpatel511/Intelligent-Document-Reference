@@ -2,11 +2,17 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 
 export type MessageRole = 'user' | 'assistant';
 
+export interface Citation {
+  file_path: string;
+  relevance: number;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
   content: string;
   timestamp: Date;
+  citations?: Citation[];
 }
 
 // Chat history removed - not focusing on that right now
@@ -41,6 +47,8 @@ interface ChatContextType {
   excludedDirectories: string[];
   exclusionPatterns: string[];
   isLoading: boolean;
+  pipelineReady: boolean;
+  indexedChunkCount: number;
   // General settings
   systemPrompt: string;
   darkMode: boolean;
@@ -112,12 +120,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [excludedDirectories, setExcludedDirectories] = useState<string[]>([]);
   const [exclusionPatterns, setExclusionPatterns] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [pipelineReady, setPipelineReady] = useState<boolean>(false);
+  const [indexedChunkCount, setIndexedChunkCount] = useState<number>(0);
   const [watcherPath, setWatcherPathState] = useState<string | null>(null);
   const [userRoot, setUserRootState] = useState<string | null>(null);
   // General settings
   const [systemPrompt, setSystemPrompt] = useState<string>('You are a helpful AI assistant that provides accurate and detailed answers based on the provided context.');
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [userInfo, setUserInfo] = useState<string>('');
+
+  // Check pipeline readiness from backend
+  const checkPipelineStatus = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/status`);
+      if (response.ok) {
+        const data = await response.json();
+        setPipelineReady(data.ready ?? false);
+        setIndexedChunkCount(data.indexed_chunks ?? 0);
+      }
+    } catch (error) {
+      console.error('Failed to check pipeline status:', error);
+      setPipelineReady(false);
+    }
+  };
 
   // Load files and context from backend on mount
   useEffect(() => {
@@ -126,6 +151,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     loadFileIndexingConfig();
     loadWatcherPath();
     loadUserRoot();
+    checkPipelineStatus();
   }, []);
 
   const loadContextFiles = async () => {
@@ -399,6 +425,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }),
       });
 
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || `Server error (${response.status})`);
+      }
+
       const data = await response.json();
       
       const assistantMessage: Message = {
@@ -406,15 +437,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         role: 'assistant',
         content: data.answer || 'No response received',
         timestamp: new Date(),
+        citations: data.citations ?? [],
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Failed to send message:', error);
+      const detail = error instanceof Error ? error.message : 'Unknown error';
       const errorMessage: Message = {
         id: `msg-${Date.now() + 1}`,
         role: 'assistant',
-        content: 'Error: Failed to get response from server. Please check your connection and try again.',
+        content: `Error: ${detail}`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -553,6 +586,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         excludedDirectories,
         exclusionPatterns,
         isLoading,
+        pipelineReady,
+        indexedChunkCount,
         systemPrompt,
         darkMode,
         userInfo,

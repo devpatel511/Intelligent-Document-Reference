@@ -31,11 +31,12 @@ const modelLabels = {
 };
 
 export function ChatInput() {
-  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles } =
+  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles, pipelineReady, indexedChunkCount } =
     useChatContext();
   const [input, setInput] = useState('');
   
-  const hasIndexedFiles = indexedFiles.length > 0;
+  // Allow chatting if either the YAML config lists files OR the backend has indexed chunks
+  const canChat = indexedFiles.length > 0 || (pipelineReady && indexedChunkCount > 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,18 +54,20 @@ export function ChatInput() {
     }
   };
 
-  if (!hasIndexedFiles) {
+  if (!canChat) {
     return (
       <div className="space-y-3">
         <div className="relative">
           <Textarea
             disabled
-            placeholder="Upload files to begin chatting..."
+            placeholder={pipelineReady ? "No documents indexed yet. Upload files in Settings → File Indexing." : "Connecting to backend..."}
             className="min-h-[120px] resize-none pr-4 pb-16 opacity-50 cursor-not-allowed"
           />
           <div className="absolute bottom-2 left-2 right-2 flex items-center justify-center">
             <p className="text-sm text-muted-foreground">
-              Please upload files in Settings → File Indexing to start chatting
+              {pipelineReady
+                ? "Index some documents first via Settings → File Indexing"
+                : "Waiting for backend to start..."}
             </p>
           </div>
         </div>
