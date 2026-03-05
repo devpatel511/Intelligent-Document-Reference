@@ -41,8 +41,9 @@ export function FileNavigator({ type }: FileNavigatorProps) {
   } = useChatContext();
 
   const [stack, setStack] = useState<StackEntry[]>([{ name: 'Files', items: fileTree }]);
+  const [animKey, setAnimKey] = useState(0);
+  const [direction, setDirection] = useState<'forward' | 'back'>('forward');
 
-  // Reset to root when fileTree changes (e.g. after save)
   useEffect(() => {
     setStack([{ name: 'Files', items: fileTree }]);
   }, [fileTree]);
@@ -50,10 +51,14 @@ export function FileNavigator({ type }: FileNavigatorProps) {
   const current = stack[stack.length - 1];
 
   const enterFolder = (node: FileNode) => {
+    setDirection('forward');
+    setAnimKey((k) => k + 1);
     setStack((prev) => [...prev, { name: node.name, items: node.children ?? [] }]);
   };
 
   const goBack = () => {
+    setDirection('back');
+    setAnimKey((k) => k + 1);
     setStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
   };
 
@@ -105,10 +110,10 @@ export function FileNavigator({ type }: FileNavigatorProps) {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Back navigation header — only shown when inside a subfolder */}
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Back navigation header */}
       {stack.length > 1 && (
-        <div className="flex items-center gap-2 px-3 py-2 border-b bg-card sticky top-0 z-10">
+        <div className="flex items-center gap-2 px-3 py-2 border-b bg-card sticky top-0 z-10 shrink-0">
           <button
             onClick={goBack}
             className="p-1 rounded hover:bg-accent cursor-pointer"
@@ -120,60 +125,68 @@ export function FileNavigator({ type }: FileNavigatorProps) {
         </div>
       )}
 
-      {/* Current level items */}
-      <div className="flex-1 overflow-y-auto p-2">
-        {current.items.length === 0 ? (
-          <p className="text-xs text-muted-foreground px-2 py-4 text-center">Empty folder</p>
-        ) : (
-          current.items.map((node) =>
-            node.type === 'folder' ? (
-              <div
-                key={node.id}
-                className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-accent group"
-              >
-                <Checkbox
-                  id={node.id}
-                  checked={getFolderCheckState(node)}
-                  onCheckedChange={(checked) => handleFolderCheckboxChange(node, checked)}
-                  className="h-4 w-4 cursor-pointer shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <button
-                  className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer text-left"
-                  onClick={() => enterFolder(node)}
+      {/* Animated content panel */}
+      <div className="flex-1 overflow-hidden relative">
+        <div
+          key={animKey}
+          className="h-full overflow-y-auto p-2"
+          style={{
+            animation: `${direction === 'forward' ? 'slide-in-from-right' : 'slide-in-from-left'} 0.2s ease-out`,
+          }}
+        >
+          {current.items.length === 0 ? (
+            <p className="text-xs text-muted-foreground px-2 py-4 text-center">Empty folder</p>
+          ) : (
+            current.items.map((node) =>
+              node.type === 'folder' ? (
+                <div
+                  key={node.id}
+                  className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-accent group"
                 >
-                  <Folder className="h-4 w-4 text-blue-500 shrink-0" />
+                  <Checkbox
+                    id={node.id}
+                    checked={getFolderCheckState(node)}
+                    onCheckedChange={(checked) => handleFolderCheckboxChange(node, checked)}
+                    className="h-4 w-4 cursor-pointer shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <button
+                    className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer text-left"
+                    onClick={() => enterFolder(node)}
+                  >
+                    <Folder className="h-4 w-4 text-blue-500 shrink-0" />
+                    <span className="text-sm truncate">{node.name}</span>
+                  </button>
+                  <button
+                    onClick={() => enterFolder(node)}
+                    className="p-0.5 rounded hover:bg-accent-foreground/10 cursor-pointer shrink-0"
+                    title={`Open ${node.name}`}
+                  >
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  key={node.id}
+                  className={cn(
+                    'flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-accent cursor-pointer'
+                  )}
+                  onClick={() => handleToggle(node.path)}
+                >
+                  <Checkbox
+                    id={node.id}
+                    checked={isChecked(node.path)}
+                    onCheckedChange={() => handleToggle(node.path)}
+                    className="h-4 w-4 cursor-pointer shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <File className="h-4 w-4 text-muted-foreground shrink-0" />
                   <span className="text-sm truncate">{node.name}</span>
-                </button>
-                <button
-                  onClick={() => enterFolder(node)}
-                  className="p-0.5 rounded hover:bg-accent-foreground/10 cursor-pointer shrink-0"
-                  title={`Open ${node.name}`}
-                >
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </button>
-              </div>
-            ) : (
-              <div
-                key={node.id}
-                className={cn(
-                  'flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-accent cursor-pointer'
-                )}
-                onClick={() => handleToggle(node.path)}
-              >
-                <Checkbox
-                  id={node.id}
-                  checked={isChecked(node.path)}
-                  onCheckedChange={() => handleToggle(node.path)}
-                  className="h-4 w-4 cursor-pointer shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <File className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="text-sm truncate">{node.name}</span>
-              </div>
+                </div>
+              )
             )
-          )
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
