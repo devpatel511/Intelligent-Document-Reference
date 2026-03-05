@@ -258,6 +258,7 @@ def run(
     db: Optional[Any] = None,
     embedder: Optional[Callable[[List[str]], List[List[float]]]] = None,
     files_override: Optional[List[DiscoveredFile]] = None,
+    llm_client: Optional[Any] = None,
 ) -> IngestionOutput:
     """Run the complete ingestion pipeline: input (file or directory) → final chunks → optional embed & store.
 
@@ -267,6 +268,7 @@ def run(
         db: Optional UnifiedDatabase. If set and embeddings produced, stores chunks + vectors.
         embedder: Optional embedder when embed_after_chunk=True.
         files_override: If set, process only these discovered files (single-file or custom list).
+        llm_client: Optional inference client with describe_image() for vision (image → text).
 
     Returns:
         IngestionOutput with final chunks and optional embeddings.
@@ -330,6 +332,7 @@ def run(
                 config=parse_config,
                 base_path=root.parent if root.is_dir() else root.parent,
                 ocr_provider=ocr_provider,
+                llm_client=llm_client,
             )
             document = preprocess(document)
 
@@ -479,6 +482,7 @@ class IngestionPipeline:
         *,
         modality: Optional[str] = None,
         base_path: Optional[Path] = None,
+        llm_client: Optional[Any] = None,
     ) -> IngestionResult:
         """Run pipeline on a single file/stream. Returns final selected chunks for that input."""
         handler = get_input_handler(source, modality=modality)
@@ -494,6 +498,7 @@ class IngestionPipeline:
             config=parse_config,
             base_path=base_path,
             ocr_provider=ocr_provider,
+            llm_client=llm_client,
         )
 
         if self.config.use_structural_chunking:
@@ -551,6 +556,7 @@ def run_index(path: str, ctx=None) -> None:
         if embedder_obj and hasattr(embedder_obj, "embed_text")
         else None
     )
+    llm_client = getattr(ctx, "inference_client", None)
     config = getattr(ctx, "pipeline_config", None) or PipelineConfig(
         embed_after_chunk=True, dedup_enabled=True
     )
@@ -568,6 +574,7 @@ def run_index(path: str, ctx=None) -> None:
                 config=config,
                 db=db,
                 embedder=embedder,
+                llm_client=llm_client,
                 files_override=[
                     DiscoveredFile(
                         path=p,
@@ -581,7 +588,7 @@ def run_index(path: str, ctx=None) -> None:
         except Exception as e:
             logger.exception("Indexing failed for %s: %s", path, e)
     else:
-        run(p, config=config, db=db, embedder=embedder)
+        run(p, config=config, db=db, embedder=embedder, llm_client=llm_client)
 
 
 def ingest(
