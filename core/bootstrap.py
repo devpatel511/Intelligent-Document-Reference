@@ -1,8 +1,7 @@
 """Bootstrap subsystem initializers and return AppContext."""
 
-from core.context import AppContext
-
 from config.settings import load_settings
+from core.context import AppContext
 from db import UnifiedDatabase
 from jobs import JobQueue, Scheduler
 from model_clients.registry import ClientRegistry

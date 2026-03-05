@@ -46,6 +46,19 @@ dev = [
 [tool.isort]
 profile = "black"
 line_length = 88
+known_first_party = [
+    "backend",
+    "config",
+    "core",
+    "db",
+    "embeddings",
+    "evaluation",
+    "inference",
+    "ingestion",
+    "jobs",
+    "model_clients",
+    "watcher",
+]
 
 [tool.ruff]
 line-length = 88
