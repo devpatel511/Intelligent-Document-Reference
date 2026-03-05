@@ -11,6 +11,9 @@ export function ChatMessages() {
   const { messages, isLoading } = useChatContext();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  // Capture whether user was near bottom BEFORE the next render so the
+  // post-render useEffect can scroll correctly even after scrollHeight grows.
+  const wasAtBottomRef = useRef(true);
 
   const isNearBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -25,16 +28,17 @@ export function ChatMessages() {
     }
   }, []);
 
-  // Auto-scroll when new messages arrive (only if already near bottom)
+  // Auto-scroll after render if user was near bottom before the update
   useEffect(() => {
-    if (isNearBottom()) {
+    if (wasAtBottomRef.current) {
       scrollToBottom();
     }
-  }, [messages, isLoading, isNearBottom, scrollToBottom]);
+  }, [messages, isLoading, scrollToBottom]);
 
-  // Track scroll position to show/hide the scroll-to-bottom button
   const handleScroll = useCallback(() => {
-    setShowScrollButton(!isNearBottom());
+    const near = isNearBottom();
+    wasAtBottomRef.current = near;
+    setShowScrollButton(!near);
   }, [isNearBottom]);
 
   if (messages.length === 0) {
@@ -162,7 +166,7 @@ export function ChatMessages() {
         <Button
           size="icon"
           variant="secondary"
-          className="absolute bottom-4 right-4 rounded-full shadow-lg cursor-pointer z-10"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full shadow-lg cursor-pointer z-10"
           onClick={scrollToBottom}
         >
           <ArrowDown className="h-4 w-4" />

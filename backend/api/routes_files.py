@@ -180,11 +180,13 @@ def build_file_tree(
 
 @router.get("/")
 async def list_files():
-    """List available files in a tree structure built from inclusion directories."""
+    """List available files in a tree structure built from inclusion directories and files."""
     config = load_file_indexing_config()
-    inclusion_dirs = config.get("inclusion", {}).get("directories", [])
+    inclusion = config.get("inclusion", {})
+    inclusion_dirs = inclusion.get("directories", []) or []
+    inclusion_files = inclusion.get("files", []) or []
 
-    if not inclusion_dirs:
+    if not inclusion_dirs and not inclusion_files:
         return {"files": []}
 
     # Build exclusion sets from config
@@ -202,6 +204,8 @@ async def list_files():
     exclusion_patterns: List[str] = exclusion_cfg.get("patterns", []) or []
 
     all_nodes = []
+
+    # Directory trees
     for dir_path in inclusion_dirs:
         if not dir_path or not Path(dir_path).exists():
             continue
@@ -219,6 +223,23 @@ async def list_files():
                 "children": tree,
             }
             all_nodes.append(root_node)
+
+    # Individual files — add as top-level file nodes (skip if excluded or non-existent)
+    for file_path in inclusion_files:
+        if not file_path or not file_path.strip():
+            continue
+        abs_path = os.path.abspath(os.path.expanduser(file_path)).rstrip(os.sep)
+        p = Path(abs_path)
+        if not p.exists() or not p.is_file():
+            continue
+        if _is_excluded(abs_path, p.name, False, excluded_dirs, excluded_files, exclusion_patterns):
+            continue
+        all_nodes.append({
+            "id": abs_path.replace(os.sep, "_"),
+            "name": p.name,
+            "type": "file",
+            "path": abs_path,
+        })
 
     return {"files": all_nodes}
 
