@@ -232,14 +232,18 @@ async def list_files():
         p = Path(abs_path)
         if not p.exists() or not p.is_file():
             continue
-        if _is_excluded(abs_path, p.name, False, excluded_dirs, excluded_files, exclusion_patterns):
+        if _is_excluded(
+            abs_path, p.name, False, excluded_dirs, excluded_files, exclusion_patterns
+        ):
             continue
-        all_nodes.append({
-            "id": abs_path.replace(os.sep, "_"),
-            "name": p.name,
-            "type": "file",
-            "path": abs_path,
-        })
+        all_nodes.append(
+            {
+                "id": abs_path.replace(os.sep, "_"),
+                "name": p.name,
+                "type": "file",
+                "path": abs_path,
+            }
+        )
 
     return {"files": all_nodes}
 
