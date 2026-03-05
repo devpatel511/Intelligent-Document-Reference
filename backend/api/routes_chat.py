@@ -3,11 +3,11 @@
 import logging
 from typing import List, Optional
 
+from core.context import AppContext
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.deps import get_context
-from core.context import AppContext
 from inference.responder import Responder
 
 logger = logging.getLogger(__name__)

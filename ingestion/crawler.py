@@ -45,7 +45,19 @@ def _matches_exclude(path: Path, patterns: tuple[str, ...], root: Path) -> bool:
 def crawl_directory(
     root: Path,
     *,
-    supported_extensions: tuple[str, ...] = (".pdf", ".txt", ".md"),
+    supported_extensions: tuple[str, ...] = (
+        ".pdf",
+        ".txt",
+        ".md",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".webp",
+    ),
     exclude_patterns: tuple[str, ...] = (
         "**/node_modules/**",
         "**/.git/**",

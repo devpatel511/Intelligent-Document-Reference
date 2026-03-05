@@ -6,7 +6,8 @@ lives in ingestion; output is final selected chunks ready for vector DB.
 
 import hashlib
 import logging
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, BinaryIO, Callable, List, Optional, Union
 
@@ -23,6 +24,41 @@ from ingestion.parser import get_input_handler
 from ingestion.preprocessing import preprocess
 
 logger = logging.getLogger(__name__)
+
+# Lazy OCR provider: used when parsing images so text is extracted via Tesseract
+# Set to False when load failed (so we only warn once)
+_ocr_provider: Optional[Any] = None
+
+
+def _get_ocr_provider() -> Optional[Any]:
+    """Return a Tesseract OCR provider if OCR is enabled and available, else None."""
+    if os.getenv("OCR_ENABLED", "true").lower() in ("false", "0", "no"):
+        return None
+    global _ocr_provider
+    if _ocr_provider is not None:
+        return _ocr_provider if _ocr_provider is not False else None
+    try:
+        from ingestion.ocr import TesseractOCRProvider
+
+        _ocr_provider = TesseractOCRProvider()
+        logger.info(
+            "OCR (tesseract) loaded; image files (JPG, PNG, etc.) will be indexed."
+        )
+        return _ocr_provider
+    except ImportError as e:
+        _ocr_provider = False
+        logger.warning(
+            "OCR not available (install pytesseract: pip install pytesseract). Image files will not be indexed: %s",
+            e,
+        )
+        return None
+    except OSError as e:
+        _ocr_provider = False
+        logger.warning(
+            "OCR not available (install tesseract binary: brew install tesseract). Image files will not be indexed: %s",
+            e,
+        )
+        return None
 
 
 @dataclass
@@ -113,7 +149,19 @@ class PipelineConfig:
     min_content_word_ratio: float = 0.35
 
     # Crawler (when input is directory)
-    supported_extensions: tuple[str, ...] = (".pdf", ".txt", ".md")
+    supported_extensions: tuple[str, ...] = (
+        ".pdf",
+        ".txt",
+        ".md",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".webp",
+    )
     exclude_patterns: tuple[str, ...] = (
         "**/node_modules/**",
         "**/.git/**",
@@ -198,6 +246,8 @@ def _modality_for_ext(ext: str) -> str:
         return "pdf"
     if ext in (".txt", ".md"):
         return "text"
+    if ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"):
+        return "image"
     return "text"
 
 
@@ -268,13 +318,30 @@ def run(
             handler = get_input_handler(
                 str(discovered.path), modality=_modality_for_ext(discovered.extension)
             )
+            ocr_provider = _get_ocr_provider()
+            parse_config = (
+                replace(cfg.ingestion, ocr_enabled=True)
+                if ocr_provider
+                else cfg.ingestion
+            )
             document = parse_and_prepare(
                 handler,
                 str(discovered.path),
-                config=cfg.ingestion,
+                config=parse_config,
                 base_path=root.parent if root.is_dir() else root.parent,
+                ocr_provider=ocr_provider,
             )
             document = preprocess(document)
+
+            # Use lower store thresholds for image/OCR docs so short text is kept
+            from ingestion.models import BlockType, SourceModality
+
+            is_image_doc = document.source_modality == SourceModality.IMAGE or any(
+                b.block_type == BlockType.IMAGE_TEXT for b in document.blocks
+            )
+            min_chars_store = 1 if is_image_doc else cfg.min_chars_store
+            min_tokens_store = 1 if is_image_doc else cfg.min_tokens_store
+            skip_boilerplate = False if is_image_doc else cfg.skip_boilerplate
 
             if cfg.use_structural_chunking:
                 if cfg.remove_boilerplate:
@@ -285,11 +352,11 @@ def run(
                     document,
                     min_block_chars=cfg.min_block_chars,
                     max_block_chars=cfg.max_block_chars,
-                    min_chars_store=cfg.min_chars_store,
+                    min_chars_store=min_chars_store,
                     max_chars_store=cfg.max_chars_store,
-                    min_tokens_store=cfg.min_tokens_store,
+                    min_tokens_store=min_tokens_store,
                     max_tokens_store=cfg.max_tokens_store,
-                    skip_boilerplate=cfg.skip_boilerplate,
+                    skip_boilerplate=skip_boilerplate,
                     store_block_types=cfg.store_block_types,
                     skip_block_types=cfg.skip_block_types,
                 )
@@ -359,6 +426,12 @@ def run(
                     discovered.modified_timestamp,
                 )
                 version_id = db.create_version(file_id, file_hash)
+                if is_image_doc:
+                    logger.info(
+                        "Stored %d chunk(s) from image: %s",
+                        len(chunks),
+                        discovered.path,
+                    )
                 store_chunks = [
                     {
                         "chunk_id": c["chunk_id"],
@@ -370,6 +443,11 @@ def run(
                     for i, c in enumerate(chunks)
                 ]
                 db.add_document(file_id, version_id, store_chunks, embs)
+            elif embs and not db:
+                logger.warning(
+                    "Chunks for %s were not stored (no database). Check backend context.",
+                    discovered.path,
+                )
 
         except Exception as e:
             logger.exception("Failed to process %s: %s", discovered.path, e)
@@ -404,8 +482,18 @@ class IngestionPipeline:
     ) -> IngestionResult:
         """Run pipeline on a single file/stream. Returns final selected chunks for that input."""
         handler = get_input_handler(source, modality=modality)
+        ocr_provider = _get_ocr_provider()
+        parse_config = (
+            replace(self.config.ingestion, ocr_enabled=True)
+            if ocr_provider
+            else self.config.ingestion
+        )
         document = parse_and_prepare(
-            handler, source, config=self.config.ingestion, base_path=base_path
+            handler,
+            source,
+            config=parse_config,
+            base_path=base_path,
+            ocr_provider=ocr_provider,
         )
 
         if self.config.use_structural_chunking:
@@ -490,8 +578,8 @@ def run_index(path: str, ctx=None) -> None:
                     )
                 ],
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("Indexing failed for %s: %s", path, e)
     else:
         run(p, config=config, db=db, embedder=embedder)
 

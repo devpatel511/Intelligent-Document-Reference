@@ -6,11 +6,11 @@ Provides enqueue, list, and status-lookup for indexing jobs.
 from dataclasses import asdict
 from typing import Optional
 
+from core.context import AppContext
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.deps import get_context
 from backend.schemas import JobEnqueueRequest, JobListResponse, JobResponse
-from core.context import AppContext
 from jobs import Job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
