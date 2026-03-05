@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -229,48 +228,26 @@ class ImageInput(InputDocument):
         use_vision = config and getattr(config, "use_vision_for_images", True)
         has_describe = llm_client and getattr(llm_client, "describe_image", None)
 
-        # Prefer LLM vision (e.g. Gemini 2.5 Flash) to describe image → text
+        # Prefer LLM vision (e.g. Gemini 2.5 Flash) to describe image → text.
+        # Descriptions are stored in vector DB chunks; when file changes, watcher
+        # queues re-chunking so the vector DB stays up to date (no separate cache).
         if use_vision and has_describe and callable(has_describe):
             text = None
             path_str = str(src.path) if src.path else None
-            mtime = None
-            if path_str and os.path.isfile(path_str):
-                try:
-                    mtime = os.stat(path_str).st_mtime
-                    from ingestion.image_description_cache import (
-                        get_image_description_cache,
-                    )
-
-                    cached = get_image_description_cache().get(path_str, mtime)
-                    if cached:
-                        text = cached
-                        logger.debug(
-                            "Vision description from cache for %s", src.identifier
-                        )
-                except Exception:
-                    pass
-            if text is None:
-                try:
-                    image_input: Union[str, bytes] = (
-                        path_str
-                        if path_str
-                        else (src.stream.read() if src.stream else b"")
-                    )
-                    if hasattr(src.stream, "seek"):
-                        src.stream.seek(0)
-                    text = llm_client.describe_image(image_input)
-                    if text and path_str and mtime is not None:
-                        try:
-                            get_image_description_cache().set(path_str, mtime, text)
-                        except Exception:
-                            pass
-                except Exception as e:
-                    logger.warning(
-                        "Vision LLM describe_image failed for %s: %s",
-                        src.identifier,
-                        e,
-                    )
-                    text = None
+            try:
+                image_input: Union[str, bytes] = (
+                    path_str if path_str else (src.stream.read() if src.stream else b"")
+                )
+                if hasattr(src.stream, "seek"):
+                    src.stream.seek(0)
+                text = llm_client.describe_image(image_input)
+            except Exception as e:
+                logger.warning(
+                    "Vision LLM describe_image failed for %s: %s",
+                    src.identifier,
+                    e,
+                )
+                text = None
             if text:
                 logger.debug("Vision LLM described image %s", src.identifier)
                 blocks.append(
