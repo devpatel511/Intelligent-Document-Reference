@@ -1,11 +1,18 @@
 """Tests for Voyage embedding client."""
 
+import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from model_clients.voyage_client import VoyageEmbeddingClient
+
+
+pytestmark = pytest.mark.skipif(
+    not os.getenv("VOYAGE_API_KEY"),
+    reason="VOYAGE_API_KEY is not set; skipping live Voyage integration test.",
+)
 
 
 def cosine_similarity(emb1, emb2):

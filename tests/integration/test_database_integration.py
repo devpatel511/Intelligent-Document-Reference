@@ -41,9 +41,9 @@ def fake_vector() -> List[float]:
     """Provide a consistent fake vector for testing.
 
     Returns:
-        List of 1024 float values for testing vector operations.
+        List of 3072 float values for testing vector operations.
     """
-    return [0.1] * 1024
+    return [0.1] * 3072
 
 
 def test_simple_integration(db: UnifiedDatabase, fake_vector: List[float]) -> None:
@@ -59,7 +59,7 @@ def test_simple_integration(db: UnifiedDatabase, fake_vector: List[float]) -> No
         db: UnifiedDatabase instance fixture.
         fake_vector: Test vector fixture.
     """
-    file_id = db.register_file("docs/intro.txt", "hash123", 1024, 0.0)
+    file_id = db.register_file("docs/intro.txt", "hash123", 3072, 0.0)
 
     version_id = db.create_version(file_id, "v1_hash")
 

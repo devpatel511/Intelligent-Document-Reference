@@ -1,6 +1,7 @@
 """Unit tests for the jobs subsystem (queue, scheduler, state, worker)."""
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Generator, List
 
@@ -169,7 +170,7 @@ class TestScheduler:
         scheduler.schedule("/tmp/sched.txt", source="watcher")
         jobs = queue.list_jobs()
         assert len(jobs) == 1
-        assert jobs[0].file_path == "/tmp/sched.txt"
+        assert jobs[0].file_path == os.path.abspath("/tmp/sched.txt")
 
 
 class TestStateHelpers:

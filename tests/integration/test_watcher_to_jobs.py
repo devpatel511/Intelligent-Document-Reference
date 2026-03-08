@@ -1,5 +1,6 @@
 """Integration test: watcher events flow through Scheduler into JobQueue."""
 
+import os
 from pathlib import Path
 from typing import Generator
 from unittest.mock import MagicMock, patch
@@ -71,7 +72,7 @@ class TestWatcherToJobs:
         assert jobs[0].source == "watcher"
         assert jobs[0].priority == PRIORITY_WATCHER
         assert jobs[0].status == "queued"
-        assert jobs[0].file_path == "/tmp/doc.txt"
+        assert jobs[0].file_path == os.path.abspath("/tmp/doc.txt")
 
     def test_multiple_events_deduplicate(
         self, registry: FileRegistry, scheduler: Scheduler, queue: JobQueue
