@@ -8,7 +8,6 @@ import pytest
 
 from model_clients.voyage_client import VoyageEmbeddingClient
 
-
 pytestmark = pytest.mark.skipif(
     not os.getenv("VOYAGE_API_KEY"),
     reason="VOYAGE_API_KEY is not set; skipping live Voyage integration test.",

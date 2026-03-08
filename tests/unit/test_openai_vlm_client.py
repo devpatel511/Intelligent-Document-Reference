@@ -7,7 +7,6 @@ import pytest
 
 from model_clients.openai_client import OpenAIInferenceClient
 
-
 pytestmark = pytest.mark.skipif(
     not os.getenv("OPENAI_API_KEY"),
     reason="OPENAI_API_KEY is not set; skipping live OpenAI integration tests.",
