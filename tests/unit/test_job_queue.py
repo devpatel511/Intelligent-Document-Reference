@@ -241,13 +241,14 @@ class TestWorker:
         Creates a mock context. Added a stub for 'get_file_record'
         to prevent AttributeError in the worker.
         """
+
         class MockContext:
             def __init__(self, q):
                 self.db = q
                 # Add a dummy method that returns None (simulating no DB record)
                 # This satisfies the worker's internal requirements.
-                self.db.get_file_record = lambda path: None 
-                
+                self.db.get_file_record = lambda path: None
+
         return MockContext(queue)
 
     @pytest.mark.asyncio
@@ -261,7 +262,9 @@ class TestWorker:
         queue.enqueue("/tmp/work.txt", source="ui")
 
         # Injecting mock_ctx prevents the AttributeError
-        worker = Worker(queue, processor=fake_processor, poll_interval=0.1, ctx=mock_ctx)
+        worker = Worker(
+            queue, processor=fake_processor, poll_interval=0.1, ctx=mock_ctx
+        )
         await worker.start()
         await asyncio.sleep(0.5)
         await worker.stop()
@@ -271,7 +274,9 @@ class TestWorker:
         assert len(job) == 1
 
     @pytest.mark.asyncio
-    async def test_worker_retries_then_succeeds(self, queue: JobQueue, mock_ctx) -> None:
+    async def test_worker_retries_then_succeeds(
+        self, queue: JobQueue, mock_ctx
+    ) -> None:
         """Worker should retry a failing job and eventually succeed."""
         call_count = 0
 
@@ -283,7 +288,9 @@ class TestWorker:
 
         queue.enqueue("/tmp/flaky.txt", source="ui")
 
-        worker = Worker(queue, processor=flaky_processor, poll_interval=0.1, ctx=mock_ctx)
+        worker = Worker(
+            queue, processor=flaky_processor, poll_interval=0.1, ctx=mock_ctx
+        )
         await worker.start()
         await asyncio.sleep(1.0)
         await worker.stop()
@@ -295,6 +302,7 @@ class TestWorker:
     @pytest.mark.asyncio
     async def test_worker_permanent_failure(self, queue: JobQueue, mock_ctx) -> None:
         """Worker should mark a job as 'failed' after max_attempts."""
+
         def always_fail(path: str, *args, **kwargs) -> None:
             raise RuntimeError("permanent error")
 

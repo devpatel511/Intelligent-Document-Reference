@@ -74,13 +74,13 @@ class TestWatcherToJobs:
         assert jobs[0].source == "watcher"
         assert jobs[0].priority == PRIORITY_WATCHER
         assert jobs[0].status == "queued"
-        
+
         # FIX: Ensure both paths are absolute and normalized for the current OS
-        # This prepends the current drive letter (e.g., C:) to the test_path 
+        # This prepends the current drive letter (e.g., C:) to the test_path
         # to match what the Scheduler does.
         actual_path = Path(jobs[0].file_path)
         expected_path = Path(test_path).absolute()
-        
+
         assert actual_path == expected_path
 
     def test_multiple_events_deduplicate(
