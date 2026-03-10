@@ -12,6 +12,9 @@ class IngestionConfig:
 
     max_workers: int = 4
     ocr_enabled: bool = False
+    use_vision_for_images: bool = (
+        True  # Use LLM (e.g. Gemini) to describe images when available
+    )
     llm_enabled: bool = False
     llm_ocr_cleanup: bool = False
     llm_structural_inference: bool = False

@@ -34,3 +34,5 @@ output2.txt
 
 # DB
 *.db
+
+*.egg-info/
