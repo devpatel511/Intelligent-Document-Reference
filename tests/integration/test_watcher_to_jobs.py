@@ -1,6 +1,5 @@
 """Integration test: watcher events flow through Scheduler into JobQueue."""
 
-import os
 from pathlib import Path
 from typing import Generator
 from unittest.mock import MagicMock, patch

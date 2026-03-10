@@ -1,7 +1,6 @@
 """Unit tests for the jobs subsystem (queue, scheduler, state, worker)."""
 
 import asyncio
-import os
 from pathlib import Path
 from typing import Generator, List
 
