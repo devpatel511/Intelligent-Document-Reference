@@ -368,6 +368,18 @@ class UnifiedDatabase:
         finally:
             conn.close()
 
+    def get_all_file_statuses(self) -> Dict[str, str]:
+        """Return a mapping of file path -> status for every tracked file.
+
+        Status values: 'indexed', 'pending', 'failed', 'outdated'.
+        """
+        conn = self._get_conn()
+        try:
+            rows = conn.execute("SELECT path, status FROM files").fetchall()
+            return {row["path"]: row["status"] for row in rows}
+        finally:
+            conn.close()
+
     def remove_files_under_directory(self, directory_path: str) -> int:
         """Remove all indexed files whose path starts with *directory_path*.
 

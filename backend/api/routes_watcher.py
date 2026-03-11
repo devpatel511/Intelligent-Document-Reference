@@ -240,16 +240,33 @@ async def add_watch_path(req: WatchPathRequest):
 
     registry.add_watch_path(clean_path, clean_excluded)
 
-    # Persist to YAML inclusion so the path survives POST /watcher/sync and appears in the UI
+    # If it is a single file, also seed watched_files so it gets scheduled
+    if os.path.isfile(clean_path):
+        try:
+            registry.upsert_file(clean_path, os.stat(clean_path).st_mtime)
+        except OSError:
+            pass
+
+    # Persist to YAML inclusion — files go to inclusion.files, dirs to inclusion.directories
     config = load_file_indexing_config()
     inclusion = config.setdefault("inclusion", {"files": [], "directories": []})
-    dirs = list(inclusion.get("directories", []))
-    normalized = {os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in dirs}
-    if clean_path not in normalized:
-        dirs.append(clean_path)
-        inclusion["directories"] = dirs
-        config["inclusion"] = inclusion
-        save_file_indexing_config(config)
+
+    if os.path.isfile(clean_path):
+        files_list = list(inclusion.get("files", []))
+        normalized = {os.path.abspath(os.path.expanduser(p)) for p in files_list}
+        if clean_path not in normalized:
+            files_list.append(clean_path)
+            inclusion["files"] = files_list
+            config["inclusion"] = inclusion
+            save_file_indexing_config(config)
+    else:
+        dirs = list(inclusion.get("directories", []))
+        normalized = {os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in dirs}
+        if clean_path not in normalized:
+            dirs.append(clean_path)
+            inclusion["directories"] = dirs
+            config["inclusion"] = inclusion
+            save_file_indexing_config(config)
 
     updated_paths = registry.get_watch_paths()
     return {"status": "added", "active_paths": updated_paths}
@@ -287,9 +304,11 @@ async def remove_watch_path_by_path(
     except Exception:
         pass
 
-    # Remove from YAML inclusion so it does not reappear after refresh or next sync
+    # Remove from YAML inclusion (check both directories and files lists)
     config = load_file_indexing_config()
     inclusion = config.get("inclusion") or {}
+    changed = False
+
     dirs = list(inclusion.get("directories", []))
     normalized_dirs = [
         os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in dirs
@@ -297,6 +316,18 @@ async def remove_watch_path_by_path(
     if clean_path in normalized_dirs:
         dirs = [p for p, n in zip(dirs, normalized_dirs) if n != clean_path]
         inclusion["directories"] = dirs
+        changed = True
+
+    files_list = list(inclusion.get("files", []))
+    normalized_files = [
+        os.path.abspath(os.path.expanduser(p)) for p in files_list
+    ]
+    if clean_path in normalized_files:
+        files_list = [p for p, n in zip(files_list, normalized_files) if n != clean_path]
+        inclusion["files"] = files_list
+        changed = True
+
+    if changed:
         config["inclusion"] = inclusion
         save_file_indexing_config(config)
     return {"status": "removed", "active_paths": registry.get_watch_paths()}

@@ -74,9 +74,16 @@ class CrossPlatformWatcher(BaseWatcher):
             return
 
         handler = WatchdogHandler(self.callback, excluded_files=excluded_files)
-        # recursive=True is default requirement
-        self.logger.info(f"Scheduling watcher for: {path}")
-        watch = self.observer.schedule(handler, path, recursive=True)
+
+        # watchdog requires a directory; for single files, watch the parent
+        if os.path.isfile(path):
+            watch_dir = os.path.dirname(path)
+            self.logger.info(f"Scheduling watcher for file {path} (watching parent dir)")
+            watch = self.observer.schedule(handler, watch_dir, recursive=False)
+        else:
+            self.logger.info(f"Scheduling watcher for: {path}")
+            watch = self.observer.schedule(handler, path, recursive=True)
+
         self._watched_paths[path] = watch
 
     def unschedule_watch(self, path: str):

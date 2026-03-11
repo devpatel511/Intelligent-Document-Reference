@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 
 export type MessageRole = 'user' | 'assistant';
 
@@ -33,6 +33,7 @@ export interface FileNode {
   type: 'file' | 'folder';
   path: string;
   selected?: boolean;
+  status?: 'indexed' | 'pending' | 'unsupported' | 'failed' | 'outdated';
   children?: FileNode[];
 }
 
@@ -139,6 +140,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [userInfo, setUserInfo] = useState<string>('');
 
+  // Track whether saved context files were loaded from backend (non-empty)
+  const hadSavedContextRef = useRef(false);
   // Check pipeline readiness from backend
   const checkPipelineStatus = async () => {
     try {
@@ -165,6 +168,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     loadSettings();
   }, []);
 
+  // Auto-select all leaf files when the file tree loads and no saved context
+  // was found. This ensures the default is "everything checked" so the user
+  // can uncheck files to exclude them from retrieval.
+  // Unsupported files are excluded from auto-selection.
+  useEffect(() => {
+    if (fileTree.length > 0 && !hadSavedContextRef.current) {
+      const collectLeaves = (nodes: FileNode[]): string[] =>
+        nodes.flatMap((n) =>
+          n.type === 'file'
+            ? n.status === 'unsupported' ? [] : [n.path]
+            : collectLeaves(n.children ?? [])
+        );
+      const allLeaves = collectLeaves(fileTree);
+      if (allLeaves.length > 0) {
+        setSelectedFiles(allLeaves);
+      }
+    }
+  }, [fileTree]);
+
   const loadContextFiles = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/files/context`);
@@ -172,6 +194,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (data.files && Array.isArray(data.files)) {
         // Only set files, filter out directories
         const filesOnly = data.files.filter((path: string) => !path.endsWith('/'));
+        if (filesOnly.length > 0) {
+          hadSavedContextRef.current = true;
+        }
         setSelectedFiles(filesOnly);
       }
     } catch (error) {

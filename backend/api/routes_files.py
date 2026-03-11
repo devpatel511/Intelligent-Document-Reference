@@ -175,8 +175,16 @@ def build_file_tree(
     excluded_dirs: Optional[Set[str]] = None,
     excluded_files: Optional[Set[str]] = None,
     exclusion_patterns: Optional[List[str]] = None,
+    file_statuses: Optional[Dict[str, str]] = None,
+    supported_extensions: Optional[Set[str]] = None,
 ) -> list:
-    """Recursively build file tree structure with absolute paths, filtering exclusions."""
+    """Recursively build file tree structure with absolute paths, filtering exclusions.
+
+    Each file node receives a ``status`` field:
+    - ``indexed``  – file has been successfully embedded and is searchable.
+    - ``pending``  – file is queued / being indexed.
+    - ``unsupported`` – file extension is not handled by the ingestion pipeline.
+    """
     full_path = Path(path)
     if not full_path.exists():
         return []
@@ -184,6 +192,8 @@ def build_file_tree(
     excl_dirs = excluded_dirs or set()
     excl_files = excluded_files or set()
     excl_patterns = exclusion_patterns or []
+    statuses = file_statuses or {}
+    sup_exts = supported_extensions or set()
 
     nodes = []
     try:
@@ -200,7 +210,7 @@ def build_file_tree(
             ):
                 continue
 
-            node = {
+            node: Dict[str, Any] = {
                 "id": abs_path.replace(os.sep, "_"),
                 "name": item.name,
                 "type": "folder" if is_dir else "file",
@@ -214,9 +224,20 @@ def build_file_tree(
                     excl_dirs,
                     excl_files,
                     excl_patterns,
+                    statuses,
+                    sup_exts,
                 )
                 if children:
                     node["children"] = children
+            else:
+                # Determine file status for the UI
+                ext = item.suffix.lower()
+                if sup_exts and ext not in sup_exts:
+                    node["status"] = "unsupported"
+                elif abs_path in statuses:
+                    node["status"] = statuses[abs_path]
+                else:
+                    node["status"] = "pending"
 
             nodes.append(node)
     except PermissionError:
@@ -250,6 +271,21 @@ async def list_files():
     }
     exclusion_patterns: List[str] = exclusion_cfg.get("patterns", []) or []
 
+    # Load file statuses from the unified DB and supported extensions
+    file_statuses: Dict[str, str] = {}
+    try:
+        from db.unified import UnifiedDatabase
+
+        unified_db_path = str(PROJECT_ROOT / "local_search.db")
+        unified_db = UnifiedDatabase(db_path=unified_db_path)
+        file_statuses = unified_db.get_all_file_statuses()
+    except Exception:
+        pass
+
+    from ingestion.pipeline import PipelineConfig
+
+    supported_extensions: Set[str] = set(PipelineConfig().supported_extensions)
+
     all_nodes = []
 
     # Directory trees
@@ -257,7 +293,13 @@ async def list_files():
         if not dir_path or not Path(dir_path).exists():
             continue
         tree = build_file_tree(
-            dir_path, dir_path, excluded_dirs, excluded_files, exclusion_patterns
+            dir_path,
+            dir_path,
+            excluded_dirs,
+            excluded_files,
+            exclusion_patterns,
+            file_statuses,
+            supported_extensions,
         )
         if tree:
             resolved = str(Path(dir_path).resolve())
@@ -283,12 +325,22 @@ async def list_files():
             abs_path, p.name, False, excluded_dirs, excluded_files, exclusion_patterns
         ):
             continue
+
+        ext = p.suffix.lower()
+        if supported_extensions and ext not in supported_extensions:
+            status = "unsupported"
+        elif abs_path in file_statuses:
+            status = file_statuses[abs_path]
+        else:
+            status = "pending"
+
         all_nodes.append(
             {
                 "id": abs_path.replace(os.sep, "_"),
                 "name": p.name,
                 "type": "file",
                 "path": abs_path,
+                "status": status,
             }
         )
 
