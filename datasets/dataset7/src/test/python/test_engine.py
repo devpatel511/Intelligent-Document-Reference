@@ -1,15 +1,18 @@
 """Tests for processing engine."""
-import pytest
+
 from app.core.engine import ProcessingEngine
+
 
 def test_empty_pipeline():
     engine = ProcessingEngine(config={})
     assert engine.run("hello") == "hello"
 
+
 def test_single_stage():
     engine = ProcessingEngine(config={})
     engine.add_stage(str.upper)
     assert engine.run("hello") == "HELLO"
+
 
 def test_multiple_stages():
     engine = ProcessingEngine(config={})

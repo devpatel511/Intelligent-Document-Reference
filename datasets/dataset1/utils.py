@@ -1,4 +1,5 @@
 """Utility functions for text processing."""
+
 import re
 import unicodedata
 

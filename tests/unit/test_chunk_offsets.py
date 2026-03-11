@@ -3,7 +3,10 @@
 import pytest
 
 from ingestion.chunking import assert_contiguous, chunk_document
-from ingestion.chunking.semantic import CandidateChunk, _merge_blocks_into_chunks, _split_large_text
+from ingestion.chunking.semantic import (
+    _merge_blocks_into_chunks,
+    _split_large_text,
+)
 from ingestion.chunking.structural import structural_chunk_document
 from ingestion.models import (
     BlockMetadata,
@@ -14,12 +17,14 @@ from ingestion.models import (
     StructuredDocument,
 )
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
 
-def _make_block(content: str, block_type: BlockType = BlockType.PARAGRAPH) -> ContentBlock:
+
+def _make_block(
+    content: str, block_type: BlockType = BlockType.PARAGRAPH
+) -> ContentBlock:
     return ContentBlock(
         content=content,
         block_type=block_type,
@@ -39,6 +44,7 @@ def _make_doc(blocks: list[ContentBlock]) -> StructuredDocument:
 # ---------------------------------------------------------------------------
 # _split_large_text
 # ---------------------------------------------------------------------------
+
 
 class TestSplitLargeText:
     def test_no_split_needed(self):
@@ -64,6 +70,7 @@ class TestSplitLargeText:
 # Semantic chunker: _merge_blocks_into_chunks
 # ---------------------------------------------------------------------------
 
+
 class TestSemanticOffsets:
     def test_single_block_within_limit(self):
         blocks = [_make_block("Hello world")]
@@ -82,7 +89,11 @@ class TestSemanticOffsets:
         assert candidates[0].end_offset == len(text)
 
     def test_blocks_split_by_max_chars(self):
-        blocks = [_make_block("A" * 300), _make_block("B" * 300), _make_block("C" * 300)]
+        blocks = [
+            _make_block("A" * 300),
+            _make_block("B" * 300),
+            _make_block("C" * 300),
+        ]
         candidates = _merge_blocks_into_chunks(blocks, min_chars=100, max_chars=400)
         assert len(candidates) >= 2
         # Offsets must be strictly increasing
@@ -117,32 +128,54 @@ class TestSemanticOffsets:
 # chunk_document (semantic)
 # ---------------------------------------------------------------------------
 
+
 class TestChunkDocumentOffsets:
     def test_offsets_are_non_overlapping(self):
-        blocks = [_make_block(f"Paragraph {i} has some varied content here. " * 10) for i in range(5)]
+        blocks = [
+            _make_block(f"Paragraph {i} has some varied content here. " * 10)
+            for i in range(5)
+        ]
         doc = _make_doc(blocks)
-        chunks = chunk_document(doc, min_block_chars=50, max_block_chars=300,
-                                min_chars_store=10, min_tokens_store=1)
+        chunks = chunk_document(
+            doc,
+            min_block_chars=50,
+            max_block_chars=300,
+            min_chars_store=10,
+            min_tokens_store=1,
+        )
         assert len(chunks) >= 2
         sorted_chunks = sorted(chunks, key=lambda c: c["start_offset"])
         for i in range(1, len(sorted_chunks)):
-            assert sorted_chunks[i]["start_offset"] >= sorted_chunks[i - 1]["end_offset"], (
-                f"Chunk {i} overlaps with chunk {i-1}"
-            )
+            assert (
+                sorted_chunks[i]["start_offset"] >= sorted_chunks[i - 1]["end_offset"]
+            ), f"Chunk {i} overlaps with chunk {i-1}"
 
     def test_each_chunk_has_unique_interval(self):
-        blocks = [_make_block(f"Section {i} discusses various topics in detail. " * 8) for i in range(4)]
+        blocks = [
+            _make_block(f"Section {i} discusses various topics in detail. " * 8)
+            for i in range(4)
+        ]
         doc = _make_doc(blocks)
-        chunks = chunk_document(doc, min_block_chars=50, max_block_chars=300,
-                                min_chars_store=10, min_tokens_store=1)
+        chunks = chunk_document(
+            doc,
+            min_block_chars=50,
+            max_block_chars=300,
+            min_chars_store=10,
+            min_tokens_store=1,
+        )
         intervals = [(c["start_offset"], c["end_offset"]) for c in chunks]
         assert len(intervals) == len(set(intervals)), "Duplicate intervals found"
 
     def test_assert_contiguous_passes(self):
         blocks = [_make_block("Sentence. " * 30) for _ in range(6)]
         doc = _make_doc(blocks)
-        chunks = chunk_document(doc, min_block_chars=50, max_block_chars=250,
-                                min_chars_store=10, min_tokens_store=1)
+        chunks = chunk_document(
+            doc,
+            min_block_chars=50,
+            max_block_chars=250,
+            min_chars_store=10,
+            min_tokens_store=1,
+        )
         if len(chunks) >= 2:
             assert_contiguous(chunks)  # should not raise
 
@@ -151,46 +184,63 @@ class TestChunkDocumentOffsets:
 # Structural chunker
 # ---------------------------------------------------------------------------
 
+
 class TestStructuralOffsets:
-    def _make_large_doc(self, n_blocks: int = 8, chars_per_block: int = 800) -> StructuredDocument:
-        blocks = [_make_block("Word " * (chars_per_block // 5)) for _ in range(n_blocks)]
+    def _make_large_doc(
+        self, n_blocks: int = 8, chars_per_block: int = 800
+    ) -> StructuredDocument:
+        blocks = [
+            _make_block("Word " * (chars_per_block // 5)) for _ in range(n_blocks)
+        ]
         return _make_doc(blocks)
 
     def test_no_block_lost(self):
         """Every block's content must appear in at least one chunk."""
         blocks = [_make_block(f"UniqueContent{i} " * 40) for i in range(6)]
         doc = _make_doc(blocks)
-        chunks = structural_chunk_document(doc, min_tokens=50, max_tokens=200, overlap_tokens=20)
+        chunks = structural_chunk_document(
+            doc, min_tokens=50, max_tokens=200, overlap_tokens=20
+        )
         combined = " ".join(c.text for c in chunks)
         for i in range(6):
             assert f"UniqueContent{i}" in combined, f"Block {i} content lost"
 
     def test_offsets_strictly_increasing(self):
         doc = self._make_large_doc(n_blocks=10)
-        chunks = structural_chunk_document(doc, min_tokens=50, max_tokens=200, overlap_tokens=20)
+        chunks = structural_chunk_document(
+            doc, min_tokens=50, max_tokens=200, overlap_tokens=20
+        )
         for i in range(1, len(chunks)):
-            assert chunks[i].start_offset >= chunks[i - 1].end_offset, (
-                f"Chunk {i} start ({chunks[i].start_offset}) < chunk {i-1} end ({chunks[i-1].end_offset})"
-            )
+            assert (
+                chunks[i].start_offset >= chunks[i - 1].end_offset
+            ), f"Chunk {i} start ({chunks[i].start_offset}) < chunk {i-1} end ({chunks[i-1].end_offset})"
 
     def test_offsets_non_overlapping(self):
         doc = self._make_large_doc(n_blocks=8)
-        chunks = structural_chunk_document(doc, min_tokens=50, max_tokens=200, overlap_tokens=30)
+        chunks = structural_chunk_document(
+            doc, min_tokens=50, max_tokens=200, overlap_tokens=30
+        )
         chunk_dicts = [c.to_dict() for c in chunks]
         if len(chunk_dicts) >= 2:
             assert_contiguous(chunk_dicts)  # should not raise
 
     def test_zero_overlap_produces_distinct_offsets(self):
         doc = self._make_large_doc(n_blocks=6)
-        chunks = structural_chunk_document(doc, min_tokens=50, max_tokens=200, overlap_tokens=0)
+        chunks = structural_chunk_document(
+            doc, min_tokens=50, max_tokens=200, overlap_tokens=0
+        )
         intervals = [(c.start_offset, c.end_offset) for c in chunks]
-        assert len(intervals) == len(set(intervals)), "Duplicate intervals with zero overlap"
+        assert len(intervals) == len(
+            set(intervals)
+        ), "Duplicate intervals with zero overlap"
 
     def test_final_flush_includes_overlap(self):
         """overlap_tail must be prepended before the final flush so no content is lost."""
         blocks = [_make_block("Word " * 60) for _ in range(4)]
         doc = _make_doc(blocks)
-        chunks = structural_chunk_document(doc, min_tokens=30, max_tokens=100, overlap_tokens=15)
+        chunks = structural_chunk_document(
+            doc, min_tokens=30, max_tokens=100, overlap_tokens=15
+        )
         # With 4 blocks and low max_tokens several flushes should occur;
         # the last chunk must have content
         assert chunks[-1].text.strip(), "Final chunk is empty (overlap_tail lost)"
@@ -199,6 +249,7 @@ class TestStructuralOffsets:
 # ---------------------------------------------------------------------------
 # assert_contiguous
 # ---------------------------------------------------------------------------
+
 
 class TestAssertContiguous:
     def test_empty_passes(self):

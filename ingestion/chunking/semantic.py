@@ -111,12 +111,15 @@ def _merge_blocks_into_chunks(
     while i < len(blocks):
         block = blocks[i]
         content = block.content
-        n_tokens = block.metadata.token_estimate or estimate_tokens(content)
         start = offset
 
         # Standalone: code, table — one block = one chunk (split if oversized)
         if block.block_type in (BlockType.CODE_BLOCK, BlockType.TABLE):
-            segments = _split_large_text(content, max_chars) if len(content) > max_chars else [content]
+            segments = (
+                _split_large_text(content, max_chars)
+                if len(content) > max_chars
+                else [content]
+            )
             for seg in segments:
                 seg_start = offset
                 seg_end = offset + len(seg)

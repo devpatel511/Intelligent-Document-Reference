@@ -1,5 +1,7 @@
 """Configuration for embedding-service."""
+
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     service_name: str = "embedding-service"
@@ -11,5 +13,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_prefix = "EMBEDDING_SERVICE_"
+
 
 settings = Settings()

@@ -23,7 +23,6 @@ from benchmarks.models import (
 )
 from benchmarks.scoring import (
     average_run_scores,
-    extract_citations_from_response,
     normalize_path,
     score_citations,
     score_comparative_retrieval,
@@ -37,6 +36,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Timing helper
 # ---------------------------------------------------------------------------
+
 
 @contextmanager
 def timed():
@@ -60,6 +60,7 @@ def timed():
 # BenchmarkRunner
 # ---------------------------------------------------------------------------
 
+
 class BenchmarkRunner:
     """Run benchmark queries against the RAG pipeline and collect metrics."""
 
@@ -69,6 +70,7 @@ class BenchmarkRunner:
 
         # Build the high-level responder from the AppContext components
         from inference.responder import Responder
+
         self.responder = Responder(
             db=ctx.db,
             embedding_client=ctx.embedding_client,
@@ -106,7 +108,11 @@ class BenchmarkRunner:
             indexing_result = await self._run_indexing()
             self._append_log(
                 "Indexing complete: %d docs, %d chunks in %.1fs"
-                % (indexing_result.doc_count, indexing_result.chunk_count, indexing_result.total_time_s)
+                % (
+                    indexing_result.doc_count,
+                    indexing_result.chunk_count,
+                    indexing_result.total_time_s,
+                )
             )
         else:
             logger.info("Skipping indexing (--skip-indexing)")
@@ -118,7 +124,9 @@ class BenchmarkRunner:
         # Step 2 — Run queries sequentially, logging each result
         total = len(self.config.prompts)
         logger.info("Running %d prompts × %d runs …", total, self.config.runs_per_query)
-        self._append_log("Running %d prompts × %d runs …" % (total, self.config.runs_per_query))
+        self._append_log(
+            "Running %d prompts × %d runs …" % (total, self.config.runs_per_query)
+        )
 
         results: List[QueryResult] = []
         for idx, prompt in enumerate(self.config.prompts):
@@ -138,6 +146,7 @@ class BenchmarkRunner:
         if not self.config.no_graphs:
             try:
                 from benchmarks.graphs import generate_graphs
+
                 n = generate_graphs(report, output_dir)
                 logger.info("Generated %d graphs in %s/graphs/", n, output_dir)
             except Exception as e:
@@ -171,6 +180,7 @@ class BenchmarkRunner:
 
         # Re-wire the responder so it uses the benchmark DB too
         from inference.responder import Responder
+
         self.responder = Responder(
             db=benchmark_db,
             embedding_client=self.ctx.embedding_client,
@@ -220,6 +230,7 @@ class BenchmarkRunner:
         total: int,
     ) -> QueryResult:
         """Execute a single prompt N times, score each run, and average."""
+
         async def _inner() -> QueryResult:
             runs: List[RunScore] = []
             for run_idx in range(self.config.runs_per_query):
@@ -229,7 +240,9 @@ class BenchmarkRunner:
             averaged = average_run_scores(runs)
             logger.info(
                 "[%d/%d] %s  hit@1=%d  composite=%.2f  latency=%.0fms",
-                idx, total, prompt.id,
+                idx,
+                total,
+                prompt.id,
                 averaged.retrieval.hit_at_1,
                 averaged.response.composite_score,
                 averaged.latency.total_latency_ms,
@@ -257,18 +270,18 @@ class BenchmarkRunner:
         # --- 1. Retrieval (timed) ---
         with timed() as t_ret:
             from inference.retriever import Retriever
+
             retriever = Retriever(
                 db=self.ctx.db, embedding_client=self.ctx.embedding_client
             )
             chunks = await retriever.retrieve(prompt.query, top_k=top_k)
 
-        retrieved_files = [
-            c.get("file_path", c.get("path", "")) for c in chunks
-        ]
+        retrieved_files = [c.get("file_path", c.get("path", "")) for c in chunks]
 
         # --- 2. Inference (timed) ---
         with timed() as t_inf:
             from inference.rag import RAGProcessor
+
             rag = RAGProcessor(inference_client=self.ctx.inference_client)
             answer = await rag.generate_response(prompt.query, chunks)
 
@@ -284,6 +297,7 @@ class BenchmarkRunner:
             )
         else:
             from benchmarks.models import RetrievalScore
+
             retrieval = RetrievalScore(
                 retrieved_files=[normalize_path(f) for f in retrieved_files]
             )
@@ -418,7 +432,9 @@ class BenchmarkRunner:
             "latency_p90_ms": _percentile(sorted_lat, 90),
             "latency_p99_ms": _percentile(sorted_lat, 99),
             "latency_mean_ms": _avg(latencies),
-            "throughput_qps": n / (sum(latencies) / 1000.0) if sum(latencies) > 0 else 0.0,
+            "throughput_qps": (
+                n / (sum(latencies) / 1000.0) if sum(latencies) > 0 else 0.0
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -478,7 +494,11 @@ class BenchmarkRunner:
             (out / "failed_retrievals.json").write_text(
                 json.dumps(failed, indent=2, default=str), encoding="utf-8"
             )
-            logger.info("Wrote %d failed retrievals to %s", len(failed), out / "failed_retrievals.json")
+            logger.info(
+                "Wrote %d failed retrievals to %s",
+                len(failed),
+                out / "failed_retrievals.json",
+            )
 
         # --- hallucinated_citations.json ---
         hallucinated = [
@@ -496,7 +516,8 @@ class BenchmarkRunner:
             )
             logger.info(
                 "Wrote %d hallucination records to %s",
-                len(hallucinated), out / "hallucinated_citations.json",
+                len(hallucinated),
+                out / "hallucinated_citations.json",
             )
 
     # ------------------------------------------------------------------
@@ -531,24 +552,42 @@ class BenchmarkRunner:
 
         # Response quality
         print(f"║{'  RESPONSE QUALITY':─<{W}}║")
-        print(f"║    Composite:    {o.get('avg_response_score', 0):>8.3f}{'':>{W - 29}}║")
-        print(f"║    Keyword:      {o.get('avg_keyword_score', 0):>8.3f}{'':>{W - 29}}║")
+        print(
+            f"║    Composite:    {o.get('avg_response_score', 0):>8.3f}{'':>{W - 29}}║"
+        )
+        print(
+            f"║    Keyword:      {o.get('avg_keyword_score', 0):>8.3f}{'':>{W - 29}}║"
+        )
         print(f"║    LLM Judge:    {o.get('avg_judge_score', 0):>8.3f}{'':>{W - 29}}║")
         print(f"║{HL}║")
 
         # Citations
         print(f"║{'  CITATIONS':─<{W}}║")
-        print(f"║    Presence:     {o.get('citation_presence_rate', 0):>8.1%}{'':>{W - 29}}║")
-        print(f"║    Correct:      {o.get('citation_correctness_rate', 0):>8.1%}{'':>{W - 29}}║")
-        print(f"║    Halluc. Rate: {o.get('avg_hallucination_rate', 0):>8.1%}{'':>{W - 29}}║")
+        print(
+            f"║    Presence:     {o.get('citation_presence_rate', 0):>8.1%}{'':>{W - 29}}║"
+        )
+        print(
+            f"║    Correct:      {o.get('citation_correctness_rate', 0):>8.1%}{'':>{W - 29}}║"
+        )
+        print(
+            f"║    Halluc. Rate: {o.get('avg_hallucination_rate', 0):>8.1%}{'':>{W - 29}}║"
+        )
         print(f"║{HL}║")
 
         # Latency
         print(f"║{'  LATENCY':─<{W}}║")
-        print(f"║    p50:          {o.get('latency_p50_ms', 0):>7.0f} ms{'':>{W - 31}}║")
-        print(f"║    p90:          {o.get('latency_p90_ms', 0):>7.0f} ms{'':>{W - 31}}║")
-        print(f"║    p99:          {o.get('latency_p99_ms', 0):>7.0f} ms{'':>{W - 31}}║")
-        print(f"║    Throughput:   {o.get('throughput_qps', 0):>7.2f} q/s{'':>{W - 32}}║")
+        print(
+            f"║    p50:          {o.get('latency_p50_ms', 0):>7.0f} ms{'':>{W - 31}}║"
+        )
+        print(
+            f"║    p90:          {o.get('latency_p90_ms', 0):>7.0f} ms{'':>{W - 31}}║"
+        )
+        print(
+            f"║    p99:          {o.get('latency_p99_ms', 0):>7.0f} ms{'':>{W - 31}}║"
+        )
+        print(
+            f"║    Throughput:   {o.get('throughput_qps', 0):>7.2f} q/s{'':>{W - 32}}║"
+        )
         print(f"╠{'═' * W}╣")
 
         # Indexing
@@ -615,6 +654,7 @@ class BenchmarkRunner:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _percentile(sorted_vals: List[float], pct: float) -> float:
     if not sorted_vals:

@@ -1,5 +1,7 @@
 """Configuration for api-gateway."""
+
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     service_name: str = "api-gateway"
@@ -11,5 +13,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_prefix = "API_GATEWAY_"
+
 
 settings = Settings()

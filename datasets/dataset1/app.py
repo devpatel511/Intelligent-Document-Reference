@@ -1,5 +1,6 @@
 """Flask application for document search API."""
-from flask import Flask, request, jsonify
+
+from flask import Flask, jsonify, request
 from search_engine import SearchEngine
 
 app = Flask(__name__)

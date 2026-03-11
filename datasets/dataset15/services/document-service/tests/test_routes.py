@@ -1,7 +1,9 @@
 """Route tests for document-service."""
+
 import pytest
 from httpx import AsyncClient
 from src.main import app
+
 
 @pytest.mark.asyncio
 async def test_health():
@@ -9,6 +11,7 @@ async def test_health():
         resp = await client.get("/health")
         assert resp.status_code == 200
         assert resp.json()["service"] == "document-service"
+
 
 @pytest.mark.asyncio
 async def test_status():

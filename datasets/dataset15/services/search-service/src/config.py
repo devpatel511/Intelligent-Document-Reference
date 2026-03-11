@@ -1,5 +1,7 @@
 """Configuration for search-service."""
+
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     service_name: str = "search-service"
@@ -11,5 +13,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_prefix = "SEARCH_SERVICE_"
+
 
 settings = Settings()

@@ -7,7 +7,6 @@ import csv
 import io
 import json
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -27,8 +26,8 @@ from benchmarks.models import (
     LatencyProfile,
     PromptConfig,
     QueryResult,
-    RetrievalScore,
     ResponseScore,
+    RetrievalScore,
     RunScore,
 )
 from benchmarks.scoring import (
@@ -41,10 +40,10 @@ from benchmarks.scoring import (
     score_response_relevance,
 )
 
-
 # ======================================================================
 # normalize_path
 # ======================================================================
+
 
 class TestNormalizePath:
     def test_forward_slash(self):
@@ -66,6 +65,7 @@ class TestNormalizePath:
 # ======================================================================
 # score_file_retrieval
 # ======================================================================
+
 
 class TestScoreFileRetrieval:
     def test_hit_at_1(self):
@@ -100,6 +100,7 @@ class TestScoreFileRetrieval:
 # score_comparative_retrieval
 # ======================================================================
 
+
 class TestScoreComparativeRetrieval:
     def test_all_found(self):
         score = score_comparative_retrieval(
@@ -132,36 +133,46 @@ class TestScoreComparativeRetrieval:
 # score_response_relevance
 # ======================================================================
 
+
 class TestScoreResponseRelevance:
     def test_keyword_only(self):
         import asyncio
-        score = asyncio.run(score_response_relevance(
-            query="What is Python?",
-            response="Python is a programming language with dynamic typing.",
-            expected_keywords=["Python", "programming", "dynamic"],
-            context_chunks=[],
-        ))
+
+        score = asyncio.run(
+            score_response_relevance(
+                query="What is Python?",
+                response="Python is a programming language with dynamic typing.",
+                expected_keywords=["Python", "programming", "dynamic"],
+                context_chunks=[],
+            )
+        )
         assert score.keyword_score == pytest.approx(1.0)
         assert score.composite_score == pytest.approx(1.0)  # only keyword layer
 
     def test_partial_keywords(self):
         import asyncio
-        score = asyncio.run(score_response_relevance(
-            query="What is Python?",
-            response="Python is a language.",
-            expected_keywords=["Python", "programming", "dynamic", "typing"],
-            context_chunks=[],
-        ))
+
+        score = asyncio.run(
+            score_response_relevance(
+                query="What is Python?",
+                response="Python is a language.",
+                expected_keywords=["Python", "programming", "dynamic", "typing"],
+                context_chunks=[],
+            )
+        )
         assert score.keyword_score == pytest.approx(0.25)  # 1/4
 
     def test_no_keywords(self):
         import asyncio
-        score = asyncio.run(score_response_relevance(
-            query="Hello",
-            response="World",
-            expected_keywords=None,
-            context_chunks=[],
-        ))
+
+        score = asyncio.run(
+            score_response_relevance(
+                query="Hello",
+                response="World",
+                expected_keywords=None,
+                context_chunks=[],
+            )
+        )
         assert score.keyword_score == 0.0
         assert score.composite_score == 0.0
 
@@ -169,6 +180,7 @@ class TestScoreResponseRelevance:
 # ======================================================================
 # extract_citations_from_response & score_citations
 # ======================================================================
+
 
 class TestCitations:
     def test_extract_simple(self):
@@ -178,9 +190,7 @@ class TestCitations:
         assert "data/answer.txt" in citations[0]
 
     def test_extract_multiple(self):
-        text = (
-            "First (Source: a.txt) and second (Source: b.txt) references."
-        )
+        text = "First (Source: a.txt) and second (Source: b.txt) references."
         citations = extract_citations_from_response(text)
         assert len(citations) == 2
 
@@ -217,6 +227,7 @@ class TestCitations:
 # average_run_scores
 # ======================================================================
 
+
 class TestAverageRunScores:
     def test_single_run(self):
         run = RunScore(
@@ -244,7 +255,9 @@ class TestAverageRunScores:
             ),
         ]
         avg = average_run_scores(runs)
-        assert avg.retrieval.hit_at_1 == 0  # round(0.5) = 0 in Python 3 (banker's rounding)
+        assert (
+            avg.retrieval.hit_at_1 == 0
+        )  # round(0.5) = 0 in Python 3 (banker's rounding)
         assert avg.retrieval.mrr == pytest.approx(0.75)
         assert avg.response.composite_score == pytest.approx(0.8)
         assert avg.latency.total_latency_ms == pytest.approx(150)
@@ -258,6 +271,7 @@ class TestAverageRunScores:
 # ======================================================================
 # PromptConfig.from_dict
 # ======================================================================
+
 
 class TestPromptConfig:
     def test_minimal(self):
@@ -290,6 +304,7 @@ class TestPromptConfig:
 # BenchmarkConfig.from_dict
 # ======================================================================
 
+
 class TestBenchmarkConfig:
     def test_defaults(self):
         raw = {"benchmark": {}, "prompts": []}
@@ -315,7 +330,11 @@ class TestBenchmarkConfig:
         """Verify the default_benchmark.yaml can be loaded."""
         import yaml
 
-        yaml_path = Path(__file__).resolve().parents[2] / "benchmarks" / "default_benchmark.yaml"
+        yaml_path = (
+            Path(__file__).resolve().parents[2]
+            / "benchmarks"
+            / "default_benchmark.yaml"
+        )
         if not yaml_path.exists():
             pytest.skip("default_benchmark.yaml not found")
         with open(yaml_path, "r", encoding="utf-8") as f:
@@ -328,6 +347,7 @@ class TestBenchmarkConfig:
 # ======================================================================
 # QueryResult.to_csv_row
 # ======================================================================
+
 
 class TestQueryResultCSV:
     def test_csv_row_keys(self):
@@ -379,6 +399,7 @@ class TestQueryResultCSV:
 # ======================================================================
 # BenchmarkRunner._compute_group_stats
 # ======================================================================
+
 
 class TestAggregation:
     def test_group_stats(self):
@@ -433,6 +454,7 @@ class TestAggregation:
 # ======================================================================
 # BenchmarkRunner._write_results (output files)
 # ======================================================================
+
 
 class TestWriteResults:
     def test_summary_json(self, tmp_path):
@@ -494,7 +516,9 @@ class TestWriteResults:
                     query_type="file_retrieval",
                     scores=RunScore(
                         retrieval=RetrievalScore(
-                            hit_at_1=0, hit_at_k=0, expected_file="a.txt",
+                            hit_at_1=0,
+                            hit_at_k=0,
+                            expected_file="a.txt",
                             retrieved_files=["b.txt"],
                         ),
                     ),
@@ -548,9 +572,11 @@ class TestWriteResults:
 # timed context manager
 # ======================================================================
 
+
 class TestTimed:
     def test_timed(self):
         import time
+
         from benchmarks.runner import timed
 
         with timed() as t:

@@ -1,5 +1,7 @@
 """Configuration for analytics-service."""
+
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     service_name: str = "analytics-service"
@@ -11,5 +13,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_prefix = "ANALYTICS_SERVICE_"
+
 
 settings = Settings()

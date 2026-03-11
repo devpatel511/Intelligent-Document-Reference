@@ -1,10 +1,13 @@
 """Middleware for analytics-service."""
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+
 import logging
 import time
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 logger = logging.getLogger("analytics-service")
+
 
 def setup_middleware(app: FastAPI):
     app.add_middleware(
@@ -19,5 +22,7 @@ def setup_middleware(app: FastAPI):
         start = time.time()
         response = await call_next(request)
         duration = time.time() - start
-        logger.info(f"{request.method} {request.url.path} {response.status_code} {duration:.3f}s")
+        logger.info(
+            f"{request.method} {request.url.path} {response.status_code} {duration:.3f}s"
+        )
         return response

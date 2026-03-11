@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
 from typing import Any, Dict, List, Optional
 
-from benchmarks.models import CitationScore, RetrievalScore, ResponseScore
+from benchmarks.models import CitationScore, ResponseScore, RetrievalScore
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +15,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Path normalization
 # ---------------------------------------------------------------------------
+
 
 def normalize_path(p: str) -> str:
     """Normalize a file path for comparison (lowercase, forward slash, strip leading ./)."""
@@ -28,6 +28,7 @@ def normalize_path(p: str) -> str:
 # ---------------------------------------------------------------------------
 # Metric 1 — File Retrieval Hit Rate
 # ---------------------------------------------------------------------------
+
 
 def score_file_retrieval(
     retrieved_files: List[str],
@@ -91,6 +92,7 @@ def score_comparative_retrieval(
 # ---------------------------------------------------------------------------
 # Metric 2 — Response Relevance Score
 # ---------------------------------------------------------------------------
+
 
 async def score_response_relevance(
     query: str,
@@ -242,13 +244,14 @@ def score_citations(
 # Helpers: averaging across runs
 # ---------------------------------------------------------------------------
 
-def average_run_scores(runs: List["RunScore"]) -> "RunScore":
+
+def average_run_scores(runs: list) -> Any:
     """Average scoring results across multiple runs of the same query."""
     from benchmarks.models import RunScore
 
     if not runs:
         return RunScore()
-    n = len(runs)
+    _ = len(runs)
 
     def _avg(vals: List[float]) -> float:
         return sum(vals) / len(vals) if vals else 0.0
@@ -284,7 +287,9 @@ def average_run_scores(runs: List["RunScore"]) -> "RunScore":
             total_latency_ms=_avg([r.latency.total_latency_ms for r in runs]),
             chunk_count=_avg_int([r.latency.chunk_count for r in runs]),
             token_count_prompt=_avg_int([r.latency.token_count_prompt for r in runs]),
-            token_count_response=_avg_int([r.latency.token_count_response for r in runs]),
+            token_count_response=_avg_int(
+                [r.latency.token_count_response for r in runs]
+            ),
         ),
     )
 

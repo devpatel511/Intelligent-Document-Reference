@@ -1,5 +1,7 @@
 """Configuration for document-service."""
+
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     service_name: str = "document-service"
@@ -11,5 +13,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_prefix = "DOCUMENT_SERVICE_"
+
 
 settings = Settings()

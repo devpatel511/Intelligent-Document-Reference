@@ -1,6 +1,7 @@
 """UserService module."""
-from typing import Any, Optional
+
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ class UserService:
     def __init__(self, config: dict[str, Any]):
         self.config = config
         self._initialized = False
-        logger.info(f"UserService initialized with config: %s", config)
+        logger.info("UserService initialized with config: %s", config)
 
     async def initialize(self) -> None:
         if self._initialized:

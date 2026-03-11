@@ -1,5 +1,7 @@
 """Document retrieval service."""
+
 import numpy as np
+
 
 class RetrieverService:
     def __init__(self, db, embedder):

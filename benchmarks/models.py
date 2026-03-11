@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-
 # ---------------------------------------------------------------------------
 # Config models (loaded from YAML)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class PromptConfig:
@@ -79,6 +79,7 @@ class BenchmarkConfig:
 # Latency profiling
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class LatencyProfile:
     """Timing measurements for a single query execution."""
@@ -97,6 +98,7 @@ class LatencyProfile:
 # ---------------------------------------------------------------------------
 # Scoring results
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class RetrievalScore:
@@ -183,6 +185,7 @@ class QueryResult:
 # Indexing results
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class IndexingResult:
     """Performance metrics from indexing the evaluation corpus."""
@@ -196,6 +199,7 @@ class IndexingResult:
 # ---------------------------------------------------------------------------
 # Final report
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class BenchmarkReport:

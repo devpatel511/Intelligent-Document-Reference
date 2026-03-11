@@ -1,12 +1,16 @@
 """Data models for document-service."""
-from pydantic import BaseModel
+
 from datetime import datetime
 from typing import Optional
+
+from pydantic import BaseModel
+
 
 class ServiceRequest(BaseModel):
     id: str
     payload: dict
     timestamp: datetime = datetime.utcnow()
+
 
 class ServiceResponse(BaseModel):
     id: str

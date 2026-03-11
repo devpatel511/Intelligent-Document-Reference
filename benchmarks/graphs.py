@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List
 
 if TYPE_CHECKING:
     from benchmarks.models import BenchmarkReport
@@ -21,6 +21,7 @@ def generate_graphs(report: "BenchmarkReport", output_dir: str) -> int:
     """Generate all benchmark charts. Returns the count of charts created."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")  # headless backend
         import matplotlib.pyplot as plt
     except ImportError:
@@ -29,6 +30,7 @@ def generate_graphs(report: "BenchmarkReport", output_dir: str) -> int:
 
     try:
         import seaborn as sns
+
         sns.set_theme(style="darkgrid", palette="muted")
     except ImportError:
         pass  # seaborn is optional
@@ -63,6 +65,7 @@ def generate_graphs(report: "BenchmarkReport", output_dir: str) -> int:
 # Individual chart generators
 # ---------------------------------------------------------------------------
 
+
 def _chart_hit_rate_by_file_type(report: "BenchmarkReport", out: str) -> None:
     import matplotlib.pyplot as plt
     import numpy as np
@@ -71,8 +74,8 @@ def _chart_hit_rate_by_file_type(report: "BenchmarkReport", out: str) -> None:
     if not ft_data:
         return
     labels = sorted(ft_data.keys())
-    hit_vals = [ft_data[l]["hit_rate_at_1"] for l in labels]
-    resp_vals = [ft_data[l]["avg_response_score"] for l in labels]
+    hit_vals = [ft_data[label]["hit_rate_at_1"] for label in labels]
+    resp_vals = [ft_data[label]["avg_response_score"] for label in labels]
 
     x = np.arange(len(labels))
     w = 0.35
@@ -96,7 +99,7 @@ def _chart_hit_rate_by_category(report: "BenchmarkReport", out: str) -> None:
     if not cat_data:
         return
     labels = sorted(cat_data.keys())
-    vals = [cat_data[l]["hit_rate_at_1"] for l in labels]
+    vals = [cat_data[label]["hit_rate_at_1"] for label in labels]
 
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.barh(labels, vals, color="steelblue")
@@ -119,7 +122,7 @@ def _chart_response_score_distribution(report: "BenchmarkReport", out: str) -> N
 
     fig, ax = plt.subplots(figsize=(10, 5))
     labels = sorted(scores_by_type.keys())
-    data = [scores_by_type[l] for l in labels]
+    data = [scores_by_type[label] for label in labels]
     ax.violinplot(data, showmeans=True, showmedians=True)
     ax.set_xticks(range(1, len(labels) + 1))
     ax.set_xticklabels(labels)
@@ -133,9 +136,7 @@ def _chart_response_score_distribution(report: "BenchmarkReport", out: str) -> N
 def _chart_latency_cdf(report: "BenchmarkReport", out: str) -> None:
     import matplotlib.pyplot as plt
 
-    latencies = sorted(
-        r.scores.latency.total_latency_ms for r in report.raw_results
-    )
+    latencies = sorted(r.scores.latency.total_latency_ms for r in report.raw_results)
     if not latencies:
         return
     cdf = [(i + 1) / len(latencies) for i in range(len(latencies))]
@@ -232,11 +233,18 @@ def _chart_subgroup_heatmap(report: "BenchmarkReport", out: str) -> None:
 
     try:
         import seaborn as sns
+
         fig, ax = plt.subplots(figsize=(10, 6))
         sns.heatmap(
-            data, annot=True, fmt=".2f", cmap="RdYlGn",
-            vmin=0, vmax=1, ax=ax,
-            xticklabels=cols, yticklabels=rows,
+            data,
+            annot=True,
+            fmt=".2f",
+            cmap="RdYlGn",
+            vmin=0,
+            vmax=1,
+            ax=ax,
+            xticklabels=cols,
+            yticklabels=rows,
         )
         ax.set_title("Response Score Heatmap: File Type × Query Complexity")
         fig.tight_layout()
@@ -291,6 +299,7 @@ def _chart_indexing_performance(report: "BenchmarkReport", out: str) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _mean(vals: List[float]) -> float:
     return sum(vals) / len(vals) if vals else 0.0

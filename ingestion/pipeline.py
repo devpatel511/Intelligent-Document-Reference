@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, BinaryIO, Callable, List, Optional, Union
 
 from ingestion.change_detector import ReindexStrategy
-from ingestion.chunking import chunk_document, assert_contiguous
+from ingestion.chunking import assert_contiguous, chunk_document
 from ingestion.chunking.density_filter import filter_by_density
 from ingestion.chunking.structural import structural_chunk_document
 from ingestion.config import IngestionConfig
@@ -274,9 +274,7 @@ def _process_single_file(
     )
     ocr_provider = _get_ocr_provider()
     parse_config = (
-        replace(cfg.ingestion, ocr_enabled=True)
-        if ocr_provider
-        else cfg.ingestion
+        replace(cfg.ingestion, ocr_enabled=True) if ocr_provider else cfg.ingestion
     )
     document = parse_and_prepare(
         handler,
@@ -523,9 +521,7 @@ def run(
                     all_embeddings.extend(fe)
                     chunks_generated += ng
                 except Exception as e:
-                    logger.exception(
-                        "Failed to process %s: %s", discovered.path, e
-                    )
+                    logger.exception("Failed to process %s: %s", discovered.path, e)
 
     if cfg.log_chunks_generated:
         logger.info("Chunks generated: %d", chunks_generated)

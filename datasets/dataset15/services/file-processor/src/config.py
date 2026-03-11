@@ -1,5 +1,7 @@
 """Configuration for file-processor."""
+
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     service_name: str = "file-processor"
@@ -11,5 +13,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_prefix = "FILE_PROCESSOR_"
+
 
 settings = Settings()

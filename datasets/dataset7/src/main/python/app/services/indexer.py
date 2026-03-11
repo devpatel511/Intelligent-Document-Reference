@@ -1,5 +1,6 @@
 """Document indexing service."""
 
+
 class IndexerService:
     def __init__(self, db, embedder):
         self.db = db
@@ -14,5 +15,5 @@ class IndexerService:
     def _chunk(self, text, size=512, overlap=64):
         chunks = []
         for i in range(0, len(text), size - overlap):
-            chunks.append(text[i:i+size])
+            chunks.append(text[i : i + size])
         return chunks

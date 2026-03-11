@@ -1,5 +1,7 @@
 """Configuration management."""
+
 import os
+
 import yaml
 
 DEFAULT_CONFIG = {
@@ -8,6 +10,7 @@ DEFAULT_CONFIG = {
     "timeout": 30,
     "log_level": "INFO",
 }
+
 
 def load_config(path: str = "config.yaml") -> dict:
     if os.path.exists(path):
