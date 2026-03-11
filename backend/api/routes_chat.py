@@ -84,7 +84,6 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
         result = await responder.respond(
             query=request.query,
             top_k=request.top_k or 5,
-            selected_files=request.selected_files or [],
         )
         processing_time_ms = round((time.monotonic() - start_time) * 1000)
     except Exception:
