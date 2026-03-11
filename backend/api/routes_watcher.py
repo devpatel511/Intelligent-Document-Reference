@@ -261,7 +261,9 @@ async def add_watch_path(req: WatchPathRequest):
             save_file_indexing_config(config)
     else:
         dirs = list(inclusion.get("directories", []))
-        normalized = {os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in dirs}
+        normalized = {
+            os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in dirs
+        }
         if clean_path not in normalized:
             dirs.append(clean_path)
             inclusion["directories"] = dirs
@@ -319,11 +321,11 @@ async def remove_watch_path_by_path(
         changed = True
 
     files_list = list(inclusion.get("files", []))
-    normalized_files = [
-        os.path.abspath(os.path.expanduser(p)) for p in files_list
-    ]
+    normalized_files = [os.path.abspath(os.path.expanduser(p)) for p in files_list]
     if clean_path in normalized_files:
-        files_list = [p for p, n in zip(files_list, normalized_files) if n != clean_path]
+        files_list = [
+            p for p, n in zip(files_list, normalized_files) if n != clean_path
+        ]
         inclusion["files"] = files_list
         changed = True
 
