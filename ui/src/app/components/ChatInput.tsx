@@ -31,7 +31,7 @@ const modelLabels = {
 };
 
 export function ChatInput() {
-  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles, indexedDirectories } =
+  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles, indexedDirectories, pipelineReady } =
     useChatContext();
   const [input, setInput] = useState('');
 
