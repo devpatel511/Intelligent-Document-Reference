@@ -42,22 +42,42 @@ def _paths_to_full_paths(paths: list, base: Optional[Path] = None) -> list:
     return [_to_full_path(x, base) for x in (paths or [])]
 
 
-def _sync_watcher_to_inclusion_directories(directories: List[str]) -> None:
-    """Sync monitor_config so only these directories are active (same logic as POST /watcher/sync)."""
+def _sync_watcher_to_inclusion(directories: List[str], files: List[str]) -> None:
+    """Sync monitor_config and watched_files to match inclusion.directories + inclusion.files."""
     db_path = PROJECT_ROOT / "file_registry.db"
     if not db_path.exists():
         return
     registry = FileRegistry(db_path=str(db_path))
-    raw = [p.strip() for p in (directories or []) if p and p.strip()]
-    inclusion_set = {os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in raw}
-    all_db_paths = registry.get_all_monitor_paths()
-    for db_path in all_db_paths:
-        normalized_db = db_path.rstrip(os.sep)
-        if normalized_db not in inclusion_set:
-            registry.remove_watch_path(db_path)
-    for p in raw:
+
+    raw_dirs = [p.strip() for p in (directories or []) if p and p.strip()]
+    raw_files = [p.strip() for p in (files or []) if p and p.strip()]
+
+    dir_set = {os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in raw_dirs}
+    file_set = {os.path.abspath(os.path.expanduser(p)) for p in raw_files}
+    all_inclusion = dir_set | file_set
+
+    # Deactivate monitor_config entries that are no longer in either list
+    for existing in registry.get_all_monitor_paths():
+        if existing.rstrip(os.sep) not in all_inclusion:
+            registry.remove_watch_path(existing)
+
+    # Ensure directories are active in monitor_config
+    for p in raw_dirs:
         full_path = os.path.abspath(os.path.expanduser(p))
         registry.add_watch_path(full_path, [])
+
+    # Ensure individual files are active in monitor_config AND watched_files
+    for p in raw_files:
+        full_path = os.path.abspath(os.path.expanduser(p))
+        path_obj = Path(full_path)
+        if path_obj.is_file():
+            registry.add_watch_path(full_path, [])
+            registry.upsert_file(full_path, path_obj.stat().st_mtime)
+
+
+def _sync_watcher_to_inclusion_directories(directories: List[str]) -> None:
+    """Backwards-compatible wrapper — syncs directories only (no individual files)."""
+    _sync_watcher_to_inclusion(directories, [])
 
 
 def load_file_indexing_config() -> Dict[str, Any]:
@@ -284,9 +304,11 @@ async def update_file_indexing_config(update: FileIndexingUpdate):
         config["context"] = {"files": _paths_to_full_paths(filtered_files)}
 
     save_file_indexing_config(config)
-    # Sync monitor_config with the inclusion list we just saved (so is_active matches YAML)
-    _sync_watcher_to_inclusion_directories(
-        config.get("inclusion", {}).get("directories", [])
+    # Sync monitor_config (and watched_files for individual files) with the saved inclusion list
+    inclusion = config.get("inclusion", {})
+    _sync_watcher_to_inclusion(
+        inclusion.get("directories", []),
+        inclusion.get("files", []),
     )
     return {"status": "ok", "config": config}
 

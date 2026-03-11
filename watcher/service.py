@@ -66,6 +66,15 @@ class FileTrackingService:
     def _scan_and_index(
         self, path: str, excluded_files: Optional[List[str]] = None
     ) -> None:
+        if os.path.isfile(path):
+            # Individual file entry in monitor_config — seed watched_files and schedule directly
+            logger.info("Registering individual file: %s", path)
+            try:
+                self.db.upsert_file(path, os.stat(path).st_mtime)
+                self._schedule(path)
+            except OSError:
+                logger.warning("Could not stat individual file: %s", path)
+            return
         logger.info("Scanning directory: %s", path)
         for _, info in self.scanner.scan_directory(path, excluded_files=excluded_files):
             self.db.upsert_file(info["path"], info["mtime"])
