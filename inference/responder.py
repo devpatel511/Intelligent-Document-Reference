@@ -39,8 +39,12 @@ class Responder:
         """
         # Resolve selected file paths to database file IDs
         file_ids: Optional[List[int]] = None
-        if selected_files:
-            file_ids = self.db.get_file_ids_for_paths(selected_files) or None
+        if selected_files is not None:
+            file_ids = self.db.get_file_ids_for_paths(selected_files)
+            if not file_ids:
+                # User explicitly selected files but none matched — return no results
+                # rather than falling back to searching everything.
+                file_ids = []
 
         logger.info("Retrieving top-%d chunks for query: %s", top_k, query[:80])
         chunks = await self.retriever.retrieve(

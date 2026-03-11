@@ -294,6 +294,36 @@ def _modality_for_ext(ext: str) -> str:
     return "text"
 
 
+def _register_and_mark_indexed(
+    discovered: DiscoveredFile,
+    db: Optional[Any],
+) -> None:
+    """Register a file in the DB and mark it indexed (no chunks to store).
+
+    Called when a file was successfully parsed but produced no storable
+    content (e.g. too short, empty after filtering, embedding failed).
+    Prevents the UI from showing a perpetual pending spinner.
+    """
+    if not db:
+        return
+    try:
+        file_hash = (
+            discovered.content_hash
+            or hashlib.sha256(str(discovered.path).encode()).hexdigest()
+        )
+        file_id = db.register_file(
+            str(discovered.path),
+            file_hash,
+            discovered.size_bytes,
+            discovered.modified_timestamp,
+        )
+        db.mark_file_indexed(file_id)
+    except Exception as exc:
+        logger.warning(
+            "Failed to mark %s as indexed (no chunks): %s", discovered.path, exc
+        )
+
+
 def _process_single_file(
     discovered: DiscoveredFile,
     cfg: PipelineConfig,
@@ -356,6 +386,7 @@ def _process_single_file(
     n_generated = len(chunks)
 
     if not chunks:
+        _register_and_mark_indexed(discovered, db)
         return file_chunks, file_embs, n_generated
 
     if not cfg.embed_after_chunk:
@@ -378,6 +409,7 @@ def _process_single_file(
             rec = dict(c)
             rec["file_path"] = str(discovered.path)
             file_chunks.append(rec)
+        _register_and_mark_indexed(discovered, db)
         return file_chunks, file_embs, n_generated
 
     if len(embs) != len(chunks):
@@ -385,6 +417,7 @@ def _process_single_file(
             rec = dict(c)
             rec["file_path"] = str(discovered.path)
             file_chunks.append(rec)
+        _register_and_mark_indexed(discovered, db)
         return file_chunks, file_embs, n_generated
 
     if cfg.dedup_enabled:

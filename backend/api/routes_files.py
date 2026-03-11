@@ -98,9 +98,11 @@ def _sync_watcher_to_inclusion(
         except Exception as exc:
             logger.warning("Failed to purge removed paths from unified DB: %s", exc)
 
-    # Track which monitor_config paths are still active AFTER removals.
+    # Track which monitor_config paths are still ACTIVE after removals.
     # New paths (not in this set) will have indexing jobs scheduled immediately.
-    existing_paths = {p.rstrip(os.sep) for p in registry.get_all_monitor_paths()}
+    # Use get_watch_paths() (active only) so that re-added paths (previously
+    # deactivated) are correctly identified as new and scheduled for indexing.
+    existing_paths = {d["path"].rstrip(os.sep) for d in registry.get_watch_paths()}
 
     # Ensure directories are active in monitor_config and schedule indexing
     from ingestion.pipeline import PipelineConfig

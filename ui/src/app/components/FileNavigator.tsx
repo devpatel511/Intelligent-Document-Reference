@@ -26,6 +26,7 @@ function getAllPaths(node: FileNode): string[] {
 
 interface StackEntry {
   name: string;
+  path: string;
   items: FileNode[];
 }
 
@@ -40,12 +41,30 @@ export function FileNavigator({ type }: FileNavigatorProps) {
     toggleExcludedFile,
   } = useChatContext();
 
-  const [stack, setStack] = useState<StackEntry[]>([{ name: 'Files', items: fileTree }]);
+  const [stack, setStack] = useState<StackEntry[]>([{ name: 'Files', path: '', items: fileTree }]);
   const [animKey, setAnimKey] = useState(0);
   const [direction, setDirection] = useState<'forward' | 'back'>('forward');
 
+  // When fileTree refreshes (e.g. status polling), rebuild the stack
+  // preserving the current navigation depth instead of resetting to root.
   useEffect(() => {
-    setStack([{ name: 'Files', items: fileTree }]);
+    setStack((prev) => {
+      const newStack: StackEntry[] = [{ name: 'Files', path: '', items: fileTree }];
+      let currentItems = fileTree;
+      for (let i = 1; i < prev.length; i++) {
+        const prevPath = prev[i].path;
+        const match = currentItems.find(
+          (n) => n.type === 'folder' && n.path === prevPath,
+        );
+        if (match && match.children) {
+          newStack.push({ name: match.name, path: match.path, items: match.children });
+          currentItems = match.children;
+        } else {
+          break;
+        }
+      }
+      return newStack;
+    });
   }, [fileTree]);
 
   const current = stack[stack.length - 1];
@@ -53,7 +72,7 @@ export function FileNavigator({ type }: FileNavigatorProps) {
   const enterFolder = (node: FileNode) => {
     setDirection('forward');
     setAnimKey((k) => k + 1);
-    setStack((prev) => [...prev, { name: node.name, items: node.children ?? [] }]);
+    setStack((prev) => [...prev, { name: node.name, path: node.path, items: node.children ?? [] }]);
   };
 
   const goBack = () => {
