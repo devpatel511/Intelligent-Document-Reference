@@ -66,7 +66,7 @@ class FakeDB:
     """Returns the pre-built FAKE_CHUNKS from search_with_metadata."""
 
     def search_with_metadata(
-        self, query_vector, limit=5, file_id=None, file_paths=None
+        self, query_vector, limit=5, file_id=None, file_ids=None
     ):
         return FAKE_CHUNKS[:limit]
 

@@ -151,10 +151,48 @@ class PipelineConfig:
     min_content_word_ratio: float = 0.35
 
     # Crawler (when input is directory)
+    # Must stay in sync with parser._CODE_EXTENSIONS + _IMAGE_EXTENSIONS
     supported_extensions: tuple[str, ...] = (
+        # Documents
         ".pdf",
         ".txt",
         ".md",
+        ".rst",
+        # Code / config
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".java",
+        ".kt",
+        ".go",
+        ".rs",
+        ".rb",
+        ".php",
+        ".swift",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".scala",
+        ".r",
+        ".sql",
+        ".sh",
+        ".bash",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".html",
+        ".css",
+        ".scss",
+        ".vue",
+        ".svelte",
+        # Images
         ".png",
         ".jpg",
         ".jpeg",
@@ -407,6 +445,8 @@ def _process_single_file(
                 ve,
             )
         db.add_document(file_id, version_id, store_chunks, embs)
+        # Mark file as indexed so /chat/status reports it and change_detector skips it
+        db.mark_file_indexed(file_id)
     elif embs and not db:
         logger.warning(
             "Chunks for %s were not stored (no database). Check backend context.",

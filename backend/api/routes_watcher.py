@@ -269,10 +269,24 @@ async def get_watch_paths():
 async def remove_watch_path_by_path(
     path: str = Query(..., description="Path to stop watching")
 ):
-    """Remove a path from the watcher (sets is_active=0). Uses query param so DELETE works reliably."""
+    """Remove a path from the watcher (sets is_active=0) and purge indexed data."""
     raw = os.path.abspath(os.path.expanduser(path))
     clean_path = raw.rstrip(os.sep) if raw else raw
     registry.remove_watch_path(clean_path)
+
+    # Purge indexed data from local_search.db so stale content is not returned
+    try:
+        from db.unified import UnifiedDatabase
+
+        unified_db_path = str(_PROJECT_ROOT / "local_search.db")
+        unified_db = UnifiedDatabase(db_path=unified_db_path)
+        if os.path.isdir(clean_path) or not os.path.exists(clean_path):
+            unified_db.remove_files_under_directory(clean_path)
+        else:
+            unified_db.remove_file(clean_path)
+    except Exception:
+        pass
+
     # Remove from YAML inclusion so it does not reappear after refresh or next sync
     config = load_file_indexing_config()
     inclusion = config.get("inclusion") or {}

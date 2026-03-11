@@ -43,7 +43,12 @@ def _paths_to_full_paths(paths: list, base: Optional[Path] = None) -> list:
 
 
 def _sync_watcher_to_inclusion(directories: List[str], files: List[str]) -> None:
-    """Sync monitor_config and watched_files to match inclusion.directories + inclusion.files."""
+    """Sync monitor_config and watched_files to match inclusion.directories + inclusion.files.
+
+    When a path is removed from the inclusion list, also purge its data from
+    local_search.db (files, chunks, vectors) so stale content is no longer
+    returned during retrieval.
+    """
     db_path = PROJECT_ROOT / "file_registry.db"
     if not db_path.exists():
         return
@@ -56,10 +61,32 @@ def _sync_watcher_to_inclusion(directories: List[str], files: List[str]) -> None
     file_set = {os.path.abspath(os.path.expanduser(p)) for p in raw_files}
     all_inclusion = dir_set | file_set
 
-    # Deactivate monitor_config entries that are no longer in either list
+    # Collect paths being removed so we can purge from unified DB
+    removed_paths: List[str] = []
     for existing in registry.get_all_monitor_paths():
         if existing.rstrip(os.sep) not in all_inclusion:
+            removed_paths.append(existing)
             registry.remove_watch_path(existing)
+
+    # Purge removed paths from local_search.db (files + chunks + vectors)
+    if removed_paths:
+        try:
+            from db.unified import UnifiedDatabase
+
+            unified_db_path = str(PROJECT_ROOT / "local_search.db")
+            unified_db = UnifiedDatabase(db_path=unified_db_path)
+            for rp in removed_paths:
+                norm = rp.rstrip(os.sep)
+                if os.path.isdir(norm) or not os.path.exists(norm):
+                    unified_db.remove_files_under_directory(norm)
+                else:
+                    unified_db.remove_file(norm)
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Failed to purge removed paths from unified DB: %s", exc
+            )
 
     # Ensure directories are active in monitor_config
     for p in raw_dirs:

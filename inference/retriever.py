@@ -16,13 +16,15 @@ class Retriever:
         query: str,
         top_k: int = 5,
         folder_id: Optional[int] = None,
+        file_ids: Optional[List[int]] = None,
     ) -> List[Dict[str, Any]]:
         """Embed the query and perform a vector similarity search.
 
         Args:
             query: Natural-language question from the user.
             top_k: How many chunks to return.
-            folder_id: Optional file-level filter (maps to file_id in DB).
+            folder_id: Optional single file-level filter (legacy).
+            file_ids: Optional list of file IDs to restrict the search to.
 
         Returns:
             List of chunk dicts with text_content, file_path, distance.
@@ -35,5 +37,6 @@ class Retriever:
             query_vec[0],
             limit=top_k,
             file_id=folder_id,
+            file_ids=file_ids,
         )
         return results
