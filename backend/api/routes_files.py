@@ -1,13 +1,17 @@
 """File metadata endpoints."""
 
 import fnmatch
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 import yaml
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from backend.deps import get_context
+from core.context import AppContext
 
 try:
     from watcher.core.database import FileRegistry
@@ -16,6 +20,8 @@ except ImportError:
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from watcher.core.database import FileRegistry
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -42,12 +48,20 @@ def _paths_to_full_paths(paths: list, base: Optional[Path] = None) -> list:
     return [_to_full_path(x, base) for x in (paths or [])]
 
 
-def _sync_watcher_to_inclusion(directories: List[str], files: List[str]) -> None:
+def _sync_watcher_to_inclusion(
+    directories: List[str],
+    files: List[str],
+    scheduler: Optional[Any] = None,
+) -> None:
     """Sync monitor_config and watched_files to match inclusion.directories + inclusion.files.
 
     When a path is removed from the inclusion list, also purge its data from
     local_search.db (files, chunks, vectors) so stale content is no longer
     returned during retrieval.
+
+    When *scheduler* is provided (from AppContext), immediately enqueue indexing
+    jobs for newly-added files so indexing starts without waiting for the
+    background reconciliation loop.
     """
     db_path = PROJECT_ROOT / "file_registry.db"
     if not db_path.exists():
@@ -82,16 +96,23 @@ def _sync_watcher_to_inclusion(directories: List[str], files: List[str]) -> None
                 else:
                     unified_db.remove_file(norm)
         except Exception as exc:
-            import logging
+            logger.warning("Failed to purge removed paths from unified DB: %s", exc)
 
-            logging.getLogger(__name__).warning(
-                "Failed to purge removed paths from unified DB: %s", exc
-            )
+    # Track which monitor_config paths are still active AFTER removals.
+    # New paths (not in this set) will have indexing jobs scheduled immediately.
+    existing_paths = {p.rstrip(os.sep) for p in registry.get_all_monitor_paths()}
 
-    # Ensure directories are active in monitor_config
+    # Ensure directories are active in monitor_config and schedule indexing
+    from ingestion.pipeline import PipelineConfig
+
+    sup_exts = set(PipelineConfig().supported_extensions)
+
     for p in raw_dirs:
         full_path = os.path.abspath(os.path.expanduser(p))
         registry.add_watch_path(full_path, [])
+        # If this directory is newly added, immediately schedule its files
+        if scheduler and full_path.rstrip(os.sep) not in existing_paths:
+            _schedule_directory(full_path, registry, scheduler, sup_exts)
 
     # Ensure individual files are active in monitor_config AND watched_files
     for p in raw_files:
@@ -100,6 +121,37 @@ def _sync_watcher_to_inclusion(directories: List[str], files: List[str]) -> None
         if path_obj.is_file():
             registry.add_watch_path(full_path, [])
             registry.upsert_file(full_path, path_obj.stat().st_mtime)
+            # Immediately schedule indexing for newly-added files
+            if scheduler and full_path not in existing_paths:
+                ext = path_obj.suffix.lower()
+                if ext in sup_exts:
+                    try:
+                        scheduler.schedule(full_path, source="ui")
+                        logger.info("Scheduled indexing for file: %s", full_path)
+                    except Exception as exc:
+                        logger.warning("Failed to schedule %s: %s", full_path, exc)
+
+
+def _schedule_directory(
+    dir_path: str,
+    registry: FileRegistry,
+    scheduler: Any,
+    supported_extensions: Set[str],
+) -> None:
+    """Walk a directory and schedule an indexing job for each supported file."""
+    for root, _dirs, filenames in os.walk(dir_path):
+        for name in filenames:
+            if name.startswith("."):
+                continue
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in supported_extensions:
+                continue
+            fp = os.path.join(root, name)
+            try:
+                registry.upsert_file(fp, os.stat(fp).st_mtime)
+                scheduler.schedule(fp, source="ui")
+            except Exception as exc:
+                logger.warning("Failed to schedule %s: %s", fp, exc)
 
 
 def _sync_watcher_to_inclusion_directories(directories: List[str]) -> None:
@@ -354,7 +406,10 @@ async def get_file_indexing_config():
 
 
 @router.post("/indexing")
-async def update_file_indexing_config(update: FileIndexingUpdate):
+async def update_file_indexing_config(
+    update: FileIndexingUpdate,
+    ctx: AppContext = Depends(get_context),
+):
     """Update file indexing configuration."""
     config = load_file_indexing_config()
 
@@ -383,11 +438,13 @@ async def update_file_indexing_config(update: FileIndexingUpdate):
         config["context"] = {"files": _paths_to_full_paths(filtered_files)}
 
     save_file_indexing_config(config)
-    # Sync monitor_config (and watched_files for individual files) with the saved inclusion list
+    # Sync monitor_config (and watched_files for individual files) with the saved inclusion list.
+    # Pass the scheduler so new files are enqueued for indexing immediately.
     inclusion = config.get("inclusion", {})
     _sync_watcher_to_inclusion(
         inclusion.get("directories", []),
         inclusion.get("files", []),
+        scheduler=getattr(ctx, "scheduler", None),
     )
     return {"status": "ok", "config": config}
 
