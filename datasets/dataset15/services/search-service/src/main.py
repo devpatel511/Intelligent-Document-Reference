@@ -1,0 +1,17 @@
+"""Main entry point for search-service."""
+import uvicorn
+from fastapi import FastAPI
+from .config import settings
+from .routes import router
+from .middleware import setup_middleware
+
+app = FastAPI(title="search-service", version="1.0.0")
+setup_middleware(app)
+app.include_router(router)
+
+@app.get("/health")
+async def health():
+    return {"service": "search-service", "status": "healthy"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=settings.port)
