@@ -6,7 +6,6 @@ import { cn } from '@/app/components/ui/utils';
 import { format } from 'date-fns';
 import { Button } from '@/app/components/ui/button';
 
-
 export function ChatMessages() {
   const { messages, isLoading } = useChatContext();
   const scrollRef = useRef<HTMLDivElement>(null);

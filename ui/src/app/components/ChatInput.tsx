@@ -31,11 +31,12 @@ const modelLabels = {
 };
 
 export function ChatInput() {
-  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles, indexedDirectories, pipelineReady } =
+  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles, indexedDirectories, pipelineReady, indexedChunkCount } =
     useChatContext();
   const [input, setInput] = useState('');
 
-  const hasIndexedContent = indexedFiles.length > 0 || indexedDirectories.length > 0;
+  // Allow chatting if either the YAML config lists files/dirs OR the backend has indexed chunks
+  const canChat = indexedFiles.length > 0 || indexedDirectories.length > 0 || (pipelineReady && indexedChunkCount > 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +54,7 @@ export function ChatInput() {
     }
   };
 
-  if (!hasIndexedContent) {
+  if (!canChat) {
     return (
       <div className="space-y-3">
         <div className="relative">
