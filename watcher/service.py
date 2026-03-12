@@ -130,6 +130,26 @@ class FileTrackingService:
             self.watcher.schedule_watch(path, excluded)
             self._scan_and_index(path, excluded)
 
+        # Polling fallback for individual files: watchdog's parent-dir watch
+        # on macOS (FSEvents) can silently miss file-level modifications.
+        # Compare current mtime against watched_files and re-schedule when
+        # a change is detected.
+        for path in desired & actual:
+            if not os.path.isfile(path):
+                continue
+            try:
+                current_mtime = os.stat(path).st_mtime
+                state = self.db.get_file_state(path)
+                if state is None:
+                    # File missing from watched_files — re-seed it
+                    self.db.upsert_file(path, current_mtime)
+                    self._schedule(path)
+                elif current_mtime != state["last_modified"]:
+                    self.db.upsert_file(path, current_mtime)
+                    self._schedule(path)
+            except OSError:
+                pass
+
         self.watch_configs = new_configs
 
     def _refresh_configs(self) -> Dict[str, Dict[str, Any]]:

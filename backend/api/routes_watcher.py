@@ -341,10 +341,21 @@ async def sync_watch_paths(req: SyncPathsRequest):
     Sync monitor_config with the inclusion list from the UI (YAML stores full paths).
     - Any path in monitor_config that is NOT in req.paths (normalized) gets is_active=0.
     - Any path in req.paths gets added/updated with is_active=1.
+    Individual files persisted in ``inclusion.files`` (YAML) are always preserved
+    so that a directory-only sync does not accidentally deactivate single-file entries.
     All paths are normalized (abspath, no trailing sep) for comparison.
     """
     raw = [p.strip() for p in (req.paths or []) if p and p.strip()]
     inclusion_set = {os.path.abspath(os.path.expanduser(p)).rstrip(os.sep) for p in raw}
+
+    # Also include individual files from YAML so they are never deactivated
+    config = load_file_indexing_config()
+    yaml_files = config.get("inclusion", {}).get("files", []) or []
+    for f in yaml_files:
+        fp = os.path.abspath(os.path.expanduser(f.strip())).rstrip(os.sep)
+        if fp:
+            inclusion_set.add(fp)
+
     all_db_paths = registry.get_all_monitor_paths()
     for db_path in all_db_paths:
         normalized_db = db_path.rstrip(os.sep)
@@ -353,4 +364,9 @@ async def sync_watch_paths(req: SyncPathsRequest):
     for p in raw:
         full_path = os.path.abspath(os.path.expanduser(p))
         registry.add_watch_path(full_path, [])
+    # Ensure individual files from YAML are also active in monitor_config
+    for f in yaml_files:
+        fp = os.path.abspath(os.path.expanduser(f.strip()))
+        if fp and os.path.isfile(fp):
+            registry.add_watch_path(fp, [])
     return {"status": "synced", "active_paths": registry.get_watch_paths()}

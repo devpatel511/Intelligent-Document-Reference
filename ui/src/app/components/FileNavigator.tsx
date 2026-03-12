@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useChatContext, FileNode } from '@/app/contexts/ChatContext';
 import { Checkbox } from '@/app/components/ui/checkbox';
-import { ChevronLeft, ChevronRight, File, Folder, Ban, Loader2, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, File, Folder, Ban, Loader2, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
 interface FileNavigatorProps {
@@ -232,8 +232,12 @@ export function FileNavigator({ type }: FileNavigatorProps) {
                     </span>
                   )}
                   {(node.status === 'failed' || node.status === 'outdated') && (
-                    <span title={node.status === 'failed' ? 'Indexing failed' : 'Outdated — re-indexing'} className="shrink-0 flex items-center">
-                      <Loader2 className="h-3.5 w-3.5 text-orange-500" />
+                    <span title={node.status === 'failed' ? 'Indexing failed' : 'Re-indexing…'} className="shrink-0 flex items-center">
+                      {node.status === 'outdated' ? (
+                        <RefreshCw className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+                      ) : (
+                        <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                      )}
                     </span>
                   )}
                 </div>

@@ -157,8 +157,15 @@ def _schedule_directory(
 
 
 def _sync_watcher_to_inclusion_directories(directories: List[str]) -> None:
-    """Backwards-compatible wrapper — syncs directories only (no individual files)."""
-    _sync_watcher_to_inclusion(directories, [])
+    """Backwards-compatible wrapper — syncs directories and reads files from YAML.
+
+    Reads ``inclusion.files`` from the persisted config so that individual
+    files are not accidentally deactivated when only directories are passed.
+    """
+    config = load_file_indexing_config()
+    inclusion = config.get("inclusion", {})
+    files = inclusion.get("files", []) or []
+    _sync_watcher_to_inclusion(directories, files)
 
 
 def load_file_indexing_config() -> Dict[str, Any]:
