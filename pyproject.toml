@@ -37,6 +37,12 @@ dev = [
 [tool.isort]
 profile = "black"
 line_length = 88
+skip_glob = [
+    ".tmp/*",
+    ".venv/*",
+    "perm_test/*",
+    "intelligentdocref.egg-info/*",
+]
 known_first_party = [
     "backend",
     "config",
@@ -54,3 +60,15 @@ known_first_party = [
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+exclude = [
+    ".tmp",
+    ".venv",
+    "perm_test",
+    "intelligentdocref.egg-info",
+]
+
+[tool.black]
+line-length = 88
+extend-exclude = '''
+/(\.tmp|\.venv|perm_test|intelligentdocref\.egg-info)/
+'''
