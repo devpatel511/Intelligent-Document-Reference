@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from ingestion import (
+    AudioInput,
     CodeInput,
     IngestionConfig,
     TextInput,
@@ -48,8 +49,35 @@ def test_get_input_handler_selects_by_extension() -> None:
     """get_input_handler selects correct handler by extension."""
     assert type(get_input_handler("x.pdf")).__name__ == "PDFInput"
     assert type(get_input_handler("x.png")).__name__ == "ImageInput"
+    assert type(get_input_handler("x.mp3")).__name__ == "AudioInput"
     assert type(get_input_handler("x.py")).__name__ == "CodeInput"
     assert type(get_input_handler("x.txt")).__name__ == "TextInput"
+
+
+def test_audio_input_transcribes_mp3(tmp_path: Path) -> None:
+    """AudioInput transcribes MP3 files when the inference client supports audio."""
+
+    class _DummyInferenceClient:
+        def transcribe_audio(self, audio):
+            assert isinstance(audio, str)
+            return "hello from audio"
+
+    f = tmp_path / "clip.mp3"
+    # Parser only needs a readable file path; content is not decoded directly.
+    f.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00")
+
+    doc = parse_and_prepare(
+        AudioInput(),
+        str(f),
+        config=IngestionConfig(),
+        llm_client=_DummyInferenceClient(),
+    )
+
+    assert doc.source_modality == SourceModality.AUDIO
+    assert len(doc.blocks) == 1
+    assert doc.blocks[0].content == "hello from audio"
+    assert doc.blocks[0].block_type == BlockType.PARAGRAPH
+    assert doc.blocks[0].metadata.extraction_method == ExtractionMethod.LLM_ASSISTED
 
 
 def test_preprocessing_normalizes_whitespace() -> None:

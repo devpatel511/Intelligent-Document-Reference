@@ -106,6 +106,7 @@ _CODE_EXTENSIONS = frozenset(
 _IMAGE_EXTENSIONS = frozenset(
     {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
 )
+_AUDIO_EXTENSIONS = frozenset({".mp3"})
 
 
 def get_input_handler(
@@ -119,6 +120,8 @@ def get_input_handler(
             return PDFInput()
         if modality == "image":
             return ImageInput()
+        if modality == "audio":
+            return AudioInput()
         if modality == "code":
             return CodeInput()
         if modality == "text":
@@ -135,6 +138,8 @@ def get_input_handler(
             return PDFInput()
         if ext in _IMAGE_EXTENSIONS:
             return ImageInput()
+        if ext in _AUDIO_EXTENSIONS:
+            return AudioInput()
         if ext in _CODE_EXTENSIONS:
             return CodeInput()
     return TextInput()
@@ -316,6 +321,56 @@ class ImageInput(InputDocument):
             source_id=src.identifier,
             blocks=blocks,
             source_modality=SourceModality.IMAGE,
+        )
+
+
+# --- Audio ---
+
+
+class AudioInput(InputDocument):
+    def parse(
+        self,
+        source: Union[str, Path, BinaryIO, InputSource],
+        ocr_provider=None,
+        llm_client=None,
+        config=None,
+    ) -> StructuredDocument:
+        src = InputDocument._resolve_source(source)
+        text = ""
+
+        transcribe = llm_client and getattr(llm_client, "transcribe_audio", None)
+        if callable(transcribe):
+            try:
+                audio_input: Union[str, bytes]
+                if src.path:
+                    audio_input = str(src.path)
+                else:
+                    audio_input = src.stream.read() if src.stream else b""
+                    if hasattr(src.stream, "seek"):
+                        src.stream.seek(0)
+                text = (transcribe(audio_input) or "").strip()
+            except Exception as e:
+                logger.warning(
+                    "Audio transcription failed for %s: %s",
+                    src.identifier,
+                    e,
+                )
+        else:
+            logger.warning(
+                "No transcribe_audio() on inference client; skipping audio transcription for %s",
+                src.identifier,
+            )
+
+        block = ContentBlock(
+            content=text,
+            block_type=BlockType.PARAGRAPH,
+            source_modality=SourceModality.AUDIO,
+            metadata=BlockMetadata(extraction_method=ExtractionMethod.LLM_ASSISTED),
+        )
+        return StructuredDocument(
+            source_id=src.identifier,
+            blocks=[block] if block.content else [],
+            source_modality=SourceModality.AUDIO,
         )
 
 

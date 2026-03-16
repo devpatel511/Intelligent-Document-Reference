@@ -49,6 +49,7 @@ def crawl_directory(
         ".pdf",
         ".txt",
         ".md",
+        ".mp3",
         ".png",
         ".jpg",
         ".jpeg",

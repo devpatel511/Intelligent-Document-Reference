@@ -151,7 +151,7 @@ class PipelineConfig:
     min_content_word_ratio: float = 0.35
 
     # Crawler (when input is directory)
-    # Must stay in sync with parser._CODE_EXTENSIONS + _IMAGE_EXTENSIONS
+    # Must stay in sync with parser._CODE_EXTENSIONS + _IMAGE_EXTENSIONS + _AUDIO_EXTENSIONS
     supported_extensions: tuple[str, ...] = (
         # Documents
         ".pdf",
@@ -201,6 +201,8 @@ class PipelineConfig:
         ".tiff",
         ".tif",
         ".webp",
+        # Audio
+        ".mp3",
     )
     exclude_patterns: tuple[str, ...] = (
         "**/node_modules/**",
@@ -291,6 +293,8 @@ def _modality_for_ext(ext: str) -> str:
         return "text"
     if ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"):
         return "image"
+    if ext == ".mp3":
+        return "audio"
     return "text"
 
 

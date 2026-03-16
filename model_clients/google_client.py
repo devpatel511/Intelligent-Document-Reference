@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -90,6 +91,68 @@ class GoogleInferenceClient(InferenceClient):
             )
         self.client = genai.Client(api_key=self.api_key)
         self.model = model
+
+    @staticmethod
+    def _is_retryable_unavailable_error(exc: Exception) -> bool:
+        """Return True for transient Gemini capacity/rate errors that should be retried."""
+        msg = str(exc).upper()
+        retry_tokens = (
+            "503",
+            "UNAVAILABLE",
+            "RESOURCE_EXHAUSTED",
+            "TOO MANY REQUESTS",
+            "429",
+            "HIGH DEMAND",
+        )
+        return any(t in msg for t in retry_tokens)
+
+    def _generate_content_with_retries(
+        self,
+        *,
+        models: list[str],
+        contents,
+        retries_per_model: int = 3,
+        initial_backoff_s: float = 1.0,
+    ):
+        """Try models in order with exponential backoff on transient availability errors."""
+        last_exc: Optional[Exception] = None
+
+        for model_name in models:
+            backoff = initial_backoff_s
+            for attempt in range(1, retries_per_model + 1):
+                try:
+                    return self.client.models.generate_content(
+                        model=model_name,
+                        contents=contents,
+                    )
+                except Exception as exc:
+                    last_exc = exc
+                    if not self._is_retryable_unavailable_error(exc):
+                        raise
+
+                    if attempt == retries_per_model:
+                        logger.warning(
+                            "Gemini model %s unavailable after %d attempts: %s",
+                            model_name,
+                            retries_per_model,
+                            exc,
+                        )
+                        break
+
+                    logger.warning(
+                        "Gemini model %s unavailable (attempt %d/%d). Retrying in %.1fs: %s",
+                        model_name,
+                        attempt,
+                        retries_per_model,
+                        backoff,
+                        exc,
+                    )
+                    time.sleep(backoff)
+                    backoff *= 2
+
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("Gemini content generation failed without an explicit error")
 
     def generate(self, prompt: str, **kwargs) -> str:
         """Generate a text response from the Gemini model.
@@ -190,3 +253,44 @@ class GoogleInferenceClient(InferenceClient):
         import asyncio
 
         return await asyncio.to_thread(self.describe_image, image, prompt)
+
+    def transcribe_audio(
+        self,
+        audio: Union[str, Path, bytes],
+        prompt: Optional[str] = None,
+        fallback_models: Optional[List[str]] = None,
+        retries_per_model: int = 3,
+    ) -> str:
+        """Transcribe audio (e.g. MP3) with Gemini multimodal input."""
+        if types is None:
+            raise ImportError("google-genai types required for transcribe_audio")
+
+        if isinstance(audio, (str, Path)):
+            audio_path = Path(audio)
+            if not audio_path.exists():
+                raise FileNotFoundError(str(audio_path))
+            data = audio_path.read_bytes()
+        else:
+            data = audio
+
+        text_prompt = prompt or (
+            "Transcribe this audio accurately. Return plain text only. "
+            "If speakers are distinguishable, prefix lines with speaker labels."
+        )
+        contents = [
+            types.Part.from_text(text=text_prompt),
+            types.Part.from_bytes(data=data, mime_type="audio/mpeg"),
+        ]
+        models_to_try: list[str] = [self.model]
+        if fallback_models is None:
+            fallback_models = ["gemini-2.5-flash", "gemini-2.0-flash"]
+        for m in fallback_models:
+            if m and m not in models_to_try:
+                models_to_try.append(m)
+
+        response = self._generate_content_with_retries(
+            models=models_to_try,
+            contents=contents,
+            retries_per_model=max(1, retries_per_model),
+        )
+        return (response.text or "").strip()
