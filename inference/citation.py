@@ -4,7 +4,6 @@ import os
 import re
 from typing import Any, Dict, List
 
-
 NOISE_QUERY_TERMS = {
     "random",
     "rubbish",
