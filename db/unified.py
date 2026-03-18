@@ -298,6 +298,69 @@ class UnifiedDatabase:
         finally:
             conn.close()
 
+    def search_text_with_metadata(
+        self,
+        query_text: str,
+        limit: int = 5,
+        file_id: Optional[int] = None,
+        file_ids: Optional[List[int]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Lexical chunk search with metadata, scoped to selected files.
+
+        This is a simple precision-oriented fallback/companion for vector retrieval.
+        It ranks chunks by a lightweight SQLite score using exact-ish LIKE matching.
+        """
+        normalized = (query_text or "").strip().lower()
+        if not normalized:
+            return []
+
+        terms = [t for t in normalized.split() if len(t) >= 2]
+        if not terms:
+            return []
+
+        conn = self._get_conn()
+        try:
+            sql = """
+                SELECT
+                    c.id,
+                    c.text_content,
+                    f.path as file_path,
+                    (
+                        CASE WHEN lower(c.text_content) LIKE ? THEN 5 ELSE 0 END +
+                        CASE WHEN lower(f.path) LIKE ? THEN 6 ELSE 0 END
+                    ) as lexical_score
+                FROM chunks c
+                JOIN files f ON c.file_id = f.id
+                WHERE 1=1
+            """
+            params: List[Any] = [f"%{normalized}%", f"%{normalized}%"]
+
+            if file_ids:
+                placeholders = ",".join("?" for _ in file_ids)
+                sql += f" AND c.file_id IN ({placeholders})"
+                params.extend(file_ids)
+            elif file_id:
+                sql += " AND c.file_id = ?"
+                params.append(file_id)
+
+            term_clauses: List[str] = []
+            for term in terms[:8]:
+                term_clauses.append("lower(c.text_content) LIKE ?")
+                params.append(f"%{term}%")
+                term_clauses.append("lower(f.path) LIKE ?")
+                params.append(f"%{term}%")
+
+            if term_clauses:
+                sql += " AND (" + " OR ".join(term_clauses) + ")"
+
+            sql += " ORDER BY lexical_score DESC, c.id ASC LIMIT ?"
+            params.append(limit)
+
+            rows = conn.execute(sql, params).fetchall()
+            return [dict(row) for row in rows if row["lexical_score"] > 0]
+        finally:
+            conn.close()
+
     def get_file_record(self, file_path: str) -> Optional[dict]:
         """
         Retrieves file metadata needed for change detection.

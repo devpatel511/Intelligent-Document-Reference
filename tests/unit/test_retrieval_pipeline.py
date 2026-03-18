@@ -69,6 +69,38 @@ class FakeDB:
         return FAKE_CHUNKS[:limit]
 
 
+class FakeHybridDB:
+    """Returns vector and lexical results to test hybrid ranking."""
+
+    def search_with_metadata(self, query_vector, limit=5, file_id=None, file_ids=None):
+        return [
+            {
+                "id": 101,
+                "text_content": "General project notes unrelated to images.",
+                "file_path": "/docs/notes.md",
+                "distance": 0.01,
+            },
+            {
+                "id": 102,
+                "text_content": "A chart image with sales trends and labels.",
+                "file_path": "/docs/chart.png",
+                "distance": 0.20,
+            },
+        ][:limit]
+
+    def search_text_with_metadata(
+        self, query_text, limit=5, file_id=None, file_ids=None
+    ):
+        return [
+            {
+                "id": 102,
+                "text_content": "A chart image with sales trends and labels.",
+                "file_path": "/docs/chart.png",
+                "lexical_score": 8,
+            }
+        ][:limit]
+
+
 # ── Tests ────────────────────────────────────────────────────────────────────
 
 
@@ -85,6 +117,18 @@ class TestRetriever:
         retriever = Retriever(db=FakeDB(), embedding_client=FakeEmbeddingClient())
         results = await retriever.retrieve("Who created Python?", top_k=2)
         assert len(results) == 2
+
+    @pytest.mark.asyncio
+    async def test_retrieve_hybrid_boosts_file_target_query(self):
+        retriever = Retriever(db=FakeHybridDB(), embedding_client=FakeEmbeddingClient())
+        results = await retriever.retrieve(
+            "what is chart.png about?",
+            top_k=1,
+            file_ids=[1, 2],
+            selected_file_paths=["/docs/chart.png", "/docs/notes.md"],
+        )
+        assert len(results) == 1
+        assert results[0]["file_path"] == "/docs/chart.png"
 
 
 class TestRAGProcessor:

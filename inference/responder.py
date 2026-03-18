@@ -48,7 +48,11 @@ class Responder:
 
         logger.info("Retrieving top-%d chunks for query: %s", top_k, query[:80])
         chunks = await self.retriever.retrieve(
-            query, top_k=top_k, folder_id=folder_id, file_ids=file_ids
+            query,
+            top_k=top_k,
+            folder_id=folder_id,
+            file_ids=file_ids,
+            selected_file_paths=selected_files,
         )
 
         if not chunks:
