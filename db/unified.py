@@ -320,20 +320,34 @@ class UnifiedDatabase:
 
         conn = self._get_conn()
         try:
-            sql = """
-                SELECT
-                    c.id,
-                    c.text_content,
-                    f.path as file_path,
-                    (
-                        CASE WHEN lower(c.text_content) LIKE ? THEN 5 ELSE 0 END +
-                        CASE WHEN lower(f.path) LIKE ? THEN 6 ELSE 0 END
-                    ) as lexical_score
-                FROM chunks c
-                JOIN files f ON c.file_id = f.id
-                WHERE 1=1
-            """
+            score_parts: List[str] = [
+                "CASE WHEN lower(c.text_content) LIKE ? THEN 5 ELSE 0 END",
+                "CASE WHEN lower(f.path) LIKE ? THEN 6 ELSE 0 END",
+            ]
             params: List[Any] = [f"%{normalized}%", f"%{normalized}%"]
+
+            for term in terms[:8]:
+                score_parts.append("CASE WHEN lower(f.path) LIKE ? THEN 2 ELSE 0 END")
+                params.append(f"%{term}%")
+                score_parts.append(
+                    "CASE WHEN lower(c.text_content) LIKE ? THEN 1 ELSE 0 END"
+                )
+                params.append(f"%{term}%")
+
+            score_expr = " + ".join(score_parts)
+
+            sql = f"""
+                SELECT id, text_content, file_path, lexical_score
+                FROM (
+                    SELECT
+                        c.id,
+                        c.text_content,
+                        f.path AS file_path,
+                        ({score_expr}) AS lexical_score
+                    FROM chunks c
+                    JOIN files f ON c.file_id = f.id
+                    WHERE 1=1
+            """
 
             if file_ids:
                 placeholders = ",".join("?" for _ in file_ids)
@@ -343,21 +357,13 @@ class UnifiedDatabase:
                 sql += " AND c.file_id = ?"
                 params.append(file_id)
 
-            term_clauses: List[str] = []
-            for term in terms[:8]:
-                term_clauses.append("lower(c.text_content) LIKE ?")
-                params.append(f"%{term}%")
-                term_clauses.append("lower(f.path) LIKE ?")
-                params.append(f"%{term}%")
-
-            if term_clauses:
-                sql += " AND (" + " OR ".join(term_clauses) + ")"
-
-            sql += " ORDER BY lexical_score DESC, c.id ASC LIMIT ?"
+            sql += (
+                " ) WHERE lexical_score > 0 ORDER BY lexical_score DESC, id ASC LIMIT ?"
+            )
             params.append(limit)
 
             rows = conn.execute(sql, params).fetchall()
-            return [dict(row) for row in rows if row["lexical_score"] > 0]
+            return [dict(row) for row in rows]
         finally:
             conn.close()
 

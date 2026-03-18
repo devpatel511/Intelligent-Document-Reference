@@ -5,6 +5,8 @@ import { User, Bot, FileText, ArrowDown } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { format } from 'date-fns';
 import { Button } from '@/app/components/ui/button';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export function ChatMessages() {
   const { messages, isLoading } = useChatContext();
@@ -39,6 +41,37 @@ export function ChatMessages() {
     wasAtBottomRef.current = near;
     setShowScrollButton(!near);
   }, [isNearBottom]);
+
+  const renderMarkdown = (content: string) => (
+    <div className="markdown-canvas text-sm">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ ...props }) => (
+            <a {...props} target="_blank" rel="noreferrer" />
+          ),
+          code: ({ className, children, ...props }) => {
+            const raw = String(children || '');
+            const isBlock = (className || '').startsWith('language-') || raw.includes('\n');
+            if (isBlock) {
+              return (
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <code className={cn('inline-code', className)} {...props}>
+                {children}
+              </code>
+            );
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
 
   if (messages.length === 0) {
     return (
@@ -91,13 +124,17 @@ export function ChatMessages() {
               >
                 <div
                   className={cn(
-                    'rounded-lg px-4 py-3',
+                    'rounded-xl px-4 py-3',
                     message.role === 'user'
                       ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted'
+                      : 'assistant-canvas bg-card border border-border/80 shadow-sm'
                   )}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {message.role === 'assistant' ? (
+                    renderMarkdown(message.content)
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  )}
                 </div>
 
                 {/* Citations */}

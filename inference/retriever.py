@@ -97,8 +97,12 @@ class Retriever:
             key=lambda item: item[1],
             reverse=True,
         )
-        ranked_keys = [chunk_key for chunk_key, _score in ranked_pairs]
-        return [by_chunk_id[k] for k in ranked_keys]
+        ranked_rows: List[Dict[str, Any]] = []
+        for chunk_key, hybrid_score in ranked_pairs:
+            row = dict(by_chunk_id[chunk_key])
+            row["hybrid_score"] = round(float(hybrid_score), 6)
+            ranked_rows.append(row)
+        return ranked_rows
 
     @staticmethod
     def _chunk_key(row: Dict[str, Any]) -> str:
