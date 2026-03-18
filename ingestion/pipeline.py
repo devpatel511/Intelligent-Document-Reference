@@ -34,7 +34,7 @@ _ocr_provider: Optional[Any] = None
 
 def _get_ocr_provider() -> Optional[Any]:
     """Return a Tesseract OCR provider if OCR is enabled and available, else None."""
-    if os.getenv("OCR_ENABLED", "true").lower() in ("false", "0", "no"):
+    if os.getenv("OCR_ENABLED", "false").lower() in ("false", "0", "no"):
         return None
     global _ocr_provider
     if _ocr_provider is not None:
@@ -50,14 +50,15 @@ def _get_ocr_provider() -> Optional[Any]:
     except ImportError as e:
         _ocr_provider = False
         logger.warning(
-            "OCR not available (install pytesseract: pip install pytesseract). Image files will not be indexed: %s",
+            "OCR enabled but dependency missing (pytesseract/pillow not installed). "
+            "Image OCR will be skipped; VLM will be used for images if available. %s",
             e,
         )
         return None
     except OSError as e:
         _ocr_provider = False
         logger.warning(
-            "OCR not available (install tesseract binary: brew install tesseract). Image files will not be indexed: %s",
+            "OCR enabled but tesseract binary not found. Image OCR will be skipped. %s",
             e,
         )
         return None
@@ -272,16 +273,21 @@ def _structural_chunk_and_filter(
             min_tokens=config.min_tokens_density,
             min_content_word_ratio=config.min_content_word_ratio,
         )
-    return [
-        {
+    result = []
+    for i, c in enumerate(chunks):
+        entry: dict[str, Any] = {
             "chunk_id": c.chunk_id,
             "chunk_index": i,
             "start_offset": c.start_offset,
             "end_offset": c.end_offset,
             "text_content": c.text,
         }
-        for i, c in enumerate(chunks)
-    ]
+        if c.page_number is not None:
+            entry["page_number"] = c.page_number
+        if c.section_hierarchy:
+            entry["section"] = " > ".join(c.section_hierarchy)
+        result.append(entry)
+    return result
 
 
 def _modality_for_ext(ext: str) -> str:
@@ -398,13 +404,26 @@ def _process_single_file(
 
     texts = [c["text_content"] for c in chunks]
     try:
-        embs = (
-            embedder(texts)
-            if embedder
-            else embed_texts_batched(texts, batch_size=cfg.embedding_batch_size)
-        )
-    except RuntimeError as e:
-        logger.warning("Embedding skipped: %s", e)
+        max_embed_batch = 100
+        embs: List[List[float]] = []
+        for batch_start in range(0, len(texts), max_embed_batch):
+            batch = texts[batch_start : batch_start + max_embed_batch]
+            batch_embs = (
+                embedder(batch)
+                if embedder
+                else embed_texts_batched(batch, batch_size=cfg.embedding_batch_size)
+            )
+            embs.extend(batch_embs)
+            if len(texts) > max_embed_batch:
+                logger.info(
+                    "Embedded batch %d-%d of %d chunks for %s",
+                    batch_start,
+                    min(batch_start + max_embed_batch, len(texts)),
+                    len(texts),
+                    discovered.path.name,
+                )
+    except (RuntimeError, Exception) as e:
+        logger.warning("Embedding failed for %s: %s", discovered.path, e)
         for c in chunks:
             rec = dict(c)
             rec["file_path"] = str(discovered.path)
@@ -477,8 +496,18 @@ def _process_single_file(
                 discovered.path,
                 ve,
             )
-        db.add_document(file_id, version_id, store_chunks, embs)
-        # Mark file as indexed so /chat/status reports it and change_detector skips it
+        try:
+            db.add_document(file_id, version_id, store_chunks, embs)
+        except ValueError as dim_err:
+            if "dimension mismatch" in str(dim_err).lower():
+                logger.warning(
+                    "Dimension mismatch for %s — skipping. "
+                    "Use Reindex in Settings to reconfigure the DB dimension. (%s)",
+                    discovered.path, dim_err,
+                )
+                _register_and_mark_indexed(discovered, db)
+                return file_chunks, file_embs, n_generated
+            raise
         db.mark_file_indexed(file_id)
     elif embs and not db:
         logger.warning(
@@ -556,12 +585,13 @@ def run(
     chunks_generated = 0
 
     workers = min(cfg.max_workers, len(file_iter)) if file_iter else 1
+    per_file_timeout = 120  # seconds — prevent any single file from hanging the pipeline
 
     if workers <= 1:
-        # Sequential path — avoids thread overhead for single files
         for discovered in file_iter:
             files_processed += 1
             try:
+                logger.info("Indexing [%d/%d]: %s", files_processed, len(file_iter), discovered.path.name)
                 fc, fe, ng = _process_single_file(
                     discovered, cfg, root, embedder, llm_client, db
                 )
@@ -571,7 +601,6 @@ def run(
             except Exception as e:
                 logger.exception("Failed to process %s: %s", discovered.path, e)
     else:
-        # Parallel path — process files concurrently
         with ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_file = {
                 executor.submit(
@@ -589,10 +618,20 @@ def run(
                 discovered = future_to_file[future]
                 files_processed += 1
                 try:
-                    fc, fe, ng = future.result()
+                    fc, fe, ng = future.result(timeout=per_file_timeout)
                     all_chunks.extend(fc)
                     all_embeddings.extend(fe)
                     chunks_generated += ng
+                    logger.info(
+                        "Indexed [%d/%d] %s (%d chunks)",
+                        files_processed, len(file_iter), discovered.path.name, ng,
+                    )
+                except TimeoutError:
+                    logger.error(
+                        "Timed out processing %s after %ds — skipping",
+                        discovered.path, per_file_timeout,
+                    )
+                    _register_and_mark_indexed(discovered, db)
                 except Exception as e:
                     logger.exception("Failed to process %s: %s", discovered.path, e)
 
@@ -697,6 +736,7 @@ def run_index(path: str, strategy: Optional[ReindexStrategy] = None, ctx=None) -
         else None
     )
     llm_client = getattr(ctx, "inference_client", None)
+
     config = getattr(ctx, "pipeline_config", None) or PipelineConfig(
         embed_after_chunk=True, dedup_enabled=True
     )

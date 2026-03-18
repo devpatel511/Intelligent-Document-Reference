@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -10,6 +11,7 @@ import time
 import tomllib
 import venv
 from pathlib import Path
+from typing import Any
 
 
 def _run_dev_mode(host: str = "127.0.0.1", port: int = 8000) -> None:
@@ -116,6 +118,103 @@ def check_command_exists(command: str) -> bool:
         subprocess.TimeoutExpired,
     ):
         return False
+
+
+def _start_mini_mode_helper(host: str, port: int) -> subprocess.Popen[Any] | None:
+    """Start the Electron mini-mode sidecar used by the global hotkey widget."""
+    project_root = Path(__file__).parent
+    mini_mode_dir = project_root / "desktop" / "mini-mode"
+
+    if not mini_mode_dir.exists():
+        return None
+
+    npm_path = shutil.which("npm")
+    if not npm_path:
+        print("Warning: npm not found, skipping Mini Mode helper startup.")
+        return None
+
+    mini_node_modules = mini_mode_dir / "node_modules"
+    if not mini_node_modules.exists():
+        print("Mini Mode dependencies not found. Installing in desktop/mini-mode...")
+        try:
+            subprocess.run([npm_path, "install"], check=True, cwd=mini_mode_dir)
+            print("✓ Mini Mode dependencies installed")
+        except subprocess.CalledProcessError as exc:
+            print(f"Warning: failed to install Mini Mode dependencies: {exc}")
+            return None
+
+    mini_env = os.environ.copy()
+    mini_env["MINI_MODE_MAIN_URL"] = f"http://{host}:{port}/chat"
+    mini_env["MINI_MODE_WIDGET_URL"] = f"http://{host}:{port}/mini"
+
+    try:
+        proc = subprocess.Popen(
+            [npm_path, "start"],
+            cwd=mini_mode_dir,
+            env=mini_env,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+        )
+    except Exception as exc:  # pragma: no cover - best effort launcher path
+        print(f"Warning: failed to start Mini Mode helper: {exc}")
+        return None
+
+    print(
+        "Mini Mode helper started. Use Ctrl+Shift+Space to toggle the widget "
+        "while the web UI is running."
+    )
+    return proc
+
+
+def _latest_mtime(root: Path) -> float:
+    """Return latest mtime under root (files only), or 0 when path is missing."""
+    if not root.exists():
+        return 0.0
+
+    latest = 0.0
+    for path in root.rglob("*"):
+        if path.is_file():
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if mtime > latest:
+                latest = mtime
+    return latest
+
+
+def _ui_build_is_stale(ui_dir: Path, ui_build_path: Path) -> bool:
+    """Check whether ui/dist is older than key UI source files."""
+    if not ui_build_path.exists():
+        return True
+
+    dist_index = ui_build_path / "index.html"
+    if not dist_index.exists():
+        return True
+
+    try:
+        dist_mtime = dist_index.stat().st_mtime
+    except OSError:
+        return True
+
+    source_roots = [
+        ui_dir / "src",
+        ui_dir / "index.html",
+        ui_dir / "package.json",
+        ui_dir / "vite.config.ts",
+        ui_dir / "vite.config.js",
+    ]
+    newest_source = 0.0
+    for src in source_roots:
+        if src.is_dir():
+            newest_source = max(newest_source, _latest_mtime(src))
+        elif src.exists():
+            try:
+                newest_source = max(newest_source, src.stat().st_mtime)
+            except OSError:
+                continue
+
+    return newest_source > dist_mtime
 
 
 def setup_environment():
@@ -249,6 +348,110 @@ def _run_benchmark(args) -> None:
     from benchmarks.models import BenchmarkConfig
     from benchmarks.runner import BenchmarkRunner
     from core.bootstrap import bootstrap
+    from core.runtime_config import build_runtime_client, resolve_runtime_preferences
+
+    def _normalize_path_fragment(value: str) -> str:
+        return value.replace("\\", "/").lower()
+
+    def _infer_dataset_name(path_like: str | None) -> str | None:
+        if not path_like:
+            return None
+        normalized = _normalize_path_fragment(path_like).rstrip("/")
+        base = normalized.split("/")[-1]
+        if re.fullmatch(r"dataset\d+", base):
+            return base
+        return None
+
+    def _prompt_expected_paths(prompt: Any) -> list[str]:
+        paths: list[str] = []
+        if getattr(prompt, "expected_file", None):
+            paths.append(str(prompt.expected_file))
+        if getattr(prompt, "expected_files", None):
+            paths.extend(str(p) for p in (prompt.expected_files or []))
+        if getattr(prompt, "expected_citation_file", None):
+            paths.append(str(prompt.expected_citation_file))
+        return paths
+
+    def _prompt_matches_dataset(prompt: Any, dataset_name: str) -> bool:
+        marker = f"/{dataset_name.lower()}/"
+        for raw in _prompt_expected_paths(prompt):
+            normalized = f"/{_normalize_path_fragment(raw).strip('/')}"
+            if marker in normalized + "/":
+                return True
+        return False
+
+    def _known_embedding_dimension(backend: str, model: str | None) -> int | None:
+        model_name = str(model or "").strip().lower()
+        if not model_name:
+            return None
+
+        if backend == "local":
+            local_prefix_dims = {
+                "embeddinggemma": 768,
+                "nomic-embed-text": 768,
+                "mxbai-embed-large": 1024,
+                "snowflake-arctic-embed": 1024,
+                "bge": 1024,
+                "e5": 1024,
+            }
+            for prefix, dim in local_prefix_dims.items():
+                if model_name.startswith(prefix):
+                    return dim
+
+        if backend == "api":
+            openai_dims = {
+                "text-embedding-3-small": 1536,
+                "text-embedding-3-large": 3072,
+            }
+            return openai_dims.get(model_name)
+
+        # Gemini and some providers support configurable dimensions and are better
+        # determined via probing; return None here so caller can continue fallback chain.
+        return None
+
+    def _infer_backend_from_model_id(
+        model_id: str | None,
+        *,
+        kind: str,
+    ) -> str | None:
+        value = str(model_id or "").strip().lower()
+        if not value:
+            return None
+
+        # Gemini naming conventions.
+        if value.startswith("models/gemini-") or value.startswith("gemini-"):
+            return "gemini"
+
+        # OpenAI naming conventions.
+        if value.startswith("text-embedding-") or value.startswith("gpt-"):
+            return "api"
+
+        # Voyage embedding model family.
+        if kind == "embedding" and value.startswith("voyage-"):
+            return "voyage"
+
+        # Heuristic for local/Ollama models (tag-style ids like model:tag).
+        if ":" in value:
+            return "local"
+
+        local_hints = (
+            "llama",
+            "qwen",
+            "deepseek",
+            "phi",
+            "mistral",
+            "gemma",
+            "nomic",
+            "embedding",
+            "embed",
+            "bge",
+            "e5",
+            "mxbai",
+        )
+        if any(h in value for h in local_hints):
+            return "local"
+
+        return None
 
     config_path = args.benchmark_config or str(
         Path(__file__).parent / "benchmarks" / "default_benchmark.yaml"
@@ -262,6 +465,41 @@ def _run_benchmark(args) -> None:
     # CLI overrides
     if args.benchmark_dataset:
         config.dataset_path = args.benchmark_dataset
+
+    # Scope benchmark to a single dataset (fast iteration mode).
+    scoped_dataset_name = None
+    if args.benchmark_dataset_id is not None:
+        ds = str(args.benchmark_dataset_id).strip()
+        scoped_dataset_name = ds if ds.startswith("dataset") else f"dataset{ds}"
+        config.dataset_path = str(Path("datasets") / scoped_dataset_name)
+    else:
+        inferred = _infer_dataset_name(args.benchmark_dataset)
+        if inferred:
+            scoped_dataset_name = inferred
+
+    if scoped_dataset_name:
+        before = len(config.prompts)
+        config.prompts = [
+            p for p in config.prompts if _prompt_matches_dataset(p, scoped_dataset_name)
+        ]
+        if config.dataset_suites:
+            scoped_path = _normalize_path_fragment(
+                str(Path("datasets") / scoped_dataset_name)
+            ).rstrip("/")
+            config.dataset_suites = [
+                s
+                for s in config.dataset_suites
+                if _normalize_path_fragment(s.path).rstrip("/") == scoped_path
+                or _normalize_path_fragment(s.id).rstrip("/")
+                == scoped_dataset_name.lower()
+            ]
+        print(
+            f"Scoped benchmark to {scoped_dataset_name}: {len(config.prompts)}/{before} prompts"
+        )
+        if not config.prompts:
+            raise SystemExit(
+                f"No prompts matched {scoped_dataset_name}. Check benchmark config paths."
+            )
     if args.benchmark_output:
         config.output_dir = args.benchmark_output
     if args.benchmark_runs is not None:
@@ -279,7 +517,131 @@ def _run_benchmark(args) -> None:
     print()
 
     ctx = bootstrap()
-    runner = BenchmarkRunner(config, ctx)
+
+    prefs = resolve_runtime_preferences(ctx)
+
+    benchmark_target = args.benchmark or "default"
+    if benchmark_target in {"local", "api", "gemini"}:
+        prefs["embedding_backend"] = benchmark_target
+        prefs["inference_backend"] = benchmark_target
+
+    if args.embed:
+        prefs["embedding_model"] = args.embed
+        inferred_embed_backend = _infer_backend_from_model_id(
+            args.embed,
+            kind="embedding",
+        )
+        if inferred_embed_backend in {"local", "api", "gemini", "voyage"}:
+            prefs["embedding_backend"] = inferred_embed_backend
+    if args.model:
+        prefs["inference_model"] = args.model
+        inferred_infer_backend = _infer_backend_from_model_id(
+            args.model,
+            kind="inference",
+        )
+        if inferred_infer_backend in {"local", "api", "gemini"}:
+            prefs["inference_backend"] = inferred_infer_backend
+
+    # Probe the embedding model's native/default vector size so benchmark indexing
+    # always uses a matching DB dimension for the selected backend/model.
+    probe_prefs = dict(prefs)
+    probe_prefs["embedding_dimension"] = None
+    embedding_backend = str(probe_prefs.get("embedding_backend") or "")
+    embedding_model = str(probe_prefs.get("embedding_model") or "")
+    probe_exception: Exception | None = None
+    probed_dimension: int | None = None
+
+    for _ in range(2):
+        try:
+            probe_embed_client = build_runtime_client(
+                ctx, kind="embedding", prefs=probe_prefs
+            )
+            probe_vector = probe_embed_client.embed_text(["benchmark dimension probe"])[0]
+            probed_dimension = len(probe_vector)
+            break
+        except Exception as exc:
+            probe_exception = exc
+
+    if probed_dimension is None:
+        known_dim = _known_embedding_dimension(embedding_backend, embedding_model)
+        if known_dim is not None:
+            print(
+                "Warning: failed to probe embedding dimension for benchmark model "
+                f"({probe_exception}). Using known dimension {known_dim} for "
+                f"{embedding_backend}/{embedding_model}."
+            )
+            probed_dimension = known_dim
+        else:
+            fallback_dimension = int(
+                prefs.get("embedding_dimension")
+                or getattr(ctx.settings, "embedding_dimension", 3072)
+            )
+            print(
+                "Warning: failed to probe embedding dimension for benchmark model "
+                f"({probe_exception}). Falling back to {fallback_dimension}."
+            )
+            probed_dimension = fallback_dimension
+
+    prefs["embedding_dimension"] = int(probed_dimension)
+    try:
+        ctx.embedding_client = build_runtime_client(ctx, kind="embedding", prefs=prefs)
+        ctx.inference_client = build_runtime_client(ctx, kind="inference", prefs=prefs)
+    except Exception as exc:
+        message = str(exc).lower()
+        if "api key is required" in message and benchmark_target == "default":
+            # Default benchmark target should remain usable even when cloud API keys
+            # are not configured. Fall back to local backends in that case.
+            print(
+                "Warning: benchmark default backend requires API key(s) but none were "
+                "configured. Falling back to local embedding/inference backends."
+            )
+            prefs["embedding_backend"] = "local"
+            prefs["inference_backend"] = "local"
+
+            if not prefs.get("embedding_model"):
+                prefs["embedding_model"] = "embeddinggemma:latest"
+            if not prefs.get("inference_model"):
+                prefs["inference_model"] = "llama3"
+
+            local_known = _known_embedding_dimension(
+                "local", str(prefs.get("embedding_model") or "")
+            )
+            if local_known is not None:
+                prefs["embedding_dimension"] = int(local_known)
+
+            ctx.embedding_client = build_runtime_client(ctx, kind="embedding", prefs=prefs)
+            ctx.inference_client = build_runtime_client(ctx, kind="inference", prefs=prefs)
+        else:
+            raise
+    ctx.runtime_preferences = prefs
+
+    # Optional dedicated vision model for image-to-text during ingestion.
+    # This lets benchmarking use a coding/text model for answer generation while
+    # using a separate multimodal model for image description.
+    indexing_llm_client = ctx.inference_client
+    if args.vlm:
+        indexing_llm_client = build_runtime_client(
+            ctx,
+            kind="inference",
+            prefs=prefs,
+            model_override=args.vlm,
+        )
+
+    print("Benchmark model configuration:")
+    print(
+        f"  Embedding: {prefs.get('embedding_backend')} / "
+        f"{prefs.get('embedding_model')} (dim={prefs.get('embedding_dimension')})"
+    )
+    print(
+        f"  Inference: {prefs.get('inference_backend')} / {prefs.get('inference_model')}"
+    )
+    if args.vlm:
+        print(
+            f"  Vision:    {prefs.get('inference_backend')} / {args.vlm} (indexing image-to-text)"
+        )
+    print()
+
+    runner = BenchmarkRunner(config, ctx, indexing_llm_client=indexing_llm_client)
     asyncio.run(runner.run())
 
 
@@ -312,8 +674,35 @@ def main():
     )
     parser.add_argument(
         "--benchmark",
-        action="store_true",
-        help="Run the benchmark evaluation suite (bypasses all UI).",
+        nargs="?",
+        const="default",
+        choices=["default", "local", "api", "gemini"],
+        default=None,
+        help=(
+            "Run benchmark suite. Optional value selects backend preset for both "
+            "embedding and inference: default|local|api|gemini."
+        ),
+    )
+    parser.add_argument(
+        "--embed",
+        type=str,
+        default=None,
+        help="Override embedding model id for benchmark runs.",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Override inference model id for benchmark runs.",
+    )
+    parser.add_argument(
+        "--vlm",
+        type=str,
+        default=None,
+        help=(
+            "Optional dedicated vision-language model for ingestion image-to-text "
+            "during benchmark runs (separate from --model)."
+        ),
     )
     parser.add_argument(
         "--benchmark-config",
@@ -326,6 +715,15 @@ def main():
         type=str,
         default=None,
         help="Override the dataset path in the benchmark config.",
+    )
+    parser.add_argument(
+        "--benchmark-dataset-id",
+        type=str,
+        default=None,
+        help=(
+            "Run benchmark against a single dataset folder and matching prompts "
+            "(e.g. 13 or dataset13)."
+        ),
     )
     parser.add_argument(
         "--benchmark-output",
@@ -349,6 +747,11 @@ def main():
         action="store_true",
         help="Skip dataset indexing and run queries against existing index.",
     )
+    parser.add_argument(
+        "--no-mini-mode",
+        action="store_true",
+        help="Do not auto-launch the Mini Mode desktop helper when using --webui.",
+    )
 
     args = parser.parse_args()
 
@@ -362,7 +765,7 @@ def main():
         _run_dev_mode(host=args.host, port=args.port)
         return
 
-    if args.benchmark:
+    if args.benchmark is not None:
         _run_benchmark(args)
         return
 
@@ -394,9 +797,9 @@ def main():
             finally:
                 os.chdir(Path(__file__).parent)
 
-        # Check if frontend is built
-        if not ui_build_path.exists():
-            print("Frontend not built. Building frontend...")
+        # Build frontend when missing or stale so /mini reflects latest styling fixes.
+        if _ui_build_is_stale(ui_dir, ui_build_path):
+            print("Frontend build is missing or stale. Building frontend...")
             os.chdir(ui_dir)
             try:
                 # Find npm executable path (works cross-platform)
@@ -475,8 +878,20 @@ def main():
                     print("   .venv/bin/python app.py --webui")
             sys.exit(1)
 
-        # Run the FastAPI server with static file serving
-        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        mini_mode_proc: subprocess.Popen[Any] | None = None
+        if not args.no_mini_mode:
+            mini_mode_proc = _start_mini_mode_helper(args.host, args.port)
+
+        try:
+            # Run the FastAPI server with static file serving
+            uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+        finally:
+            if mini_mode_proc and mini_mode_proc.poll() is None:
+                mini_mode_proc.terminate()
+                try:
+                    mini_mode_proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    mini_mode_proc.kill()
     else:
         print("Use --webui flag to launch the web interface")
         parser.print_help()

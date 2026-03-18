@@ -1,4 +1,4 @@
-"""Citation formatting helpers."""
+"""Citation formatting helpers with confidence-calibrated scoring."""
 
 import os
 import re
@@ -18,10 +18,21 @@ NOISE_QUERY_TERMS = {
     "nothing",
 }
 
+STOP_WORDS = {
+    "the", "is", "at", "which", "on", "in", "an", "and", "or", "of", "to",
+    "for", "it", "by", "be", "as", "do", "has", "had", "was", "are", "been",
+    "with", "this", "that", "from", "can", "will", "but", "not", "all", "any",
+    "about", "into", "its", "what", "how", "when", "where", "who", "why",
+    "file", "files", "document", "documents", "page", "pages", "find", "show",
+    "tell", "me", "give", "get", "see", "look", "search", "there", "here",
+    "some", "more", "most", "other", "than", "then", "also", "just", "only",
+    "very", "too", "so", "no", "yes", "up", "down", "out", "over", "under",
+}
+
 
 def _query_terms(query: str) -> set[str]:
     terms = re.findall(r"[a-z0-9_\-.]+", (query or "").lower())
-    return {t for t in terms if len(t) > 1}
+    return {t for t in terms if len(t) > 1 and t not in STOP_WORDS}
 
 
 def _path_terms(path: str) -> set[str]:
@@ -67,15 +78,14 @@ def _semantic_score(distance: float | None) -> float:
     if distance is None:
         return 0.0
     dist = max(0.0, min(2.0, float(distance)))
-    # Non-linear mapping so mediocre matches do not look too confident.
-    # dist=0.0 -> 1.0, dist=0.5 -> 0.5, dist=1.0 -> 0.0
-    score = (1.0 - dist) if dist < 1.0 else 0.0
-    return max(0.0, score)
+    if dist >= 1.0:
+        return 0.0
+    raw = 1.0 - dist
+    return raw ** 0.7
 
 
 def _hybrid_score(raw_hybrid: float) -> float:
-    # hybrid scores from RRF are usually small; squash to [0,1] conservatively.
-    return max(0.0, min(1.0, raw_hybrid * 6.0))
+    return max(0.0, min(1.0, raw_hybrid * 8.0))
 
 
 def _content_overlap_score(query_terms: set[str], text: str) -> float:
@@ -94,30 +104,33 @@ def _content_overlap_score(query_terms: set[str], text: str) -> float:
 def _query_looks_noisy(query_terms: set[str], query: str) -> bool:
     if not query:
         return False
-    lowered_query = query.lower()
     if any(term in query_terms for term in NOISE_QUERY_TERMS):
         return True
-
-    # Very short and generic prompts tend to be poor evidence anchors.
-    if len(query_terms) <= 2 and len(lowered_query.strip()) < 16:
+    if len(query_terms) <= 2 and len(query.strip()) < 16:
         return True
-
     return False
 
 
 def _confidence_for_display(score: float, noisy_query: bool) -> float:
-    """Convert internal score to user-facing confidence in [0,1]."""
-    # Piecewise calibration: weak evidence remains low, strong evidence rises quickly.
+    """Convert internal score to user-facing confidence in [0,1].
+
+    Designed so that:
+    - Strong matches (score > 0.55) display as 70-95%
+    - Moderate matches (0.30-0.55) display as 35-70%
+    - Weak matches (< 0.30) display as 5-35%
+    """
     if score < 0.10:
-        conf = score * 0.20
-    elif score < 0.30:
-        conf = 0.02 + (score - 0.10) * 1.10
-    elif score < 0.50:
-        conf = 0.24 + (score - 0.30) * 1.75
-    elif score < 0.70:
-        conf = 0.59 + (score - 0.50) * 1.50
+        conf = score * 0.50
+    elif score < 0.25:
+        conf = 0.05 + (score - 0.10) * 1.33
+    elif score < 0.40:
+        conf = 0.25 + (score - 0.25) * 2.00
+    elif score < 0.55:
+        conf = 0.55 + (score - 0.40) * 1.67
+    elif score < 0.75:
+        conf = 0.80 + (score - 0.55) * 0.75
     else:
-        conf = 0.89 + (score - 0.70) * 0.30
+        conf = 0.95
 
     if noisy_query:
         conf *= 0.40
@@ -155,42 +168,44 @@ def format_citations(
         path_match = _path_match_score(path, query, q_terms)
         content_overlap = _content_overlap_score(q_terms, snippet)
 
-        # Weighted evidence score [0,1]
         score = (
-            0.58 * sem
-            + 0.16 * hyb
-            + 0.08 * lex
+            0.52 * sem
+            + 0.14 * hyb
+            + 0.06 * lex
             + 0.06 * path_match
-            + 0.12 * content_overlap
+            + 0.22 * content_overlap
         )
 
         if sem >= 0.75 and content_overlap >= 0.25:
-            score += 0.12
+            score += 0.15
         elif sem >= 0.65 and content_overlap >= 0.20:
-            score += 0.08
+            score += 0.10
+        elif sem >= 0.55 and content_overlap >= 0.15:
+            score += 0.05
 
         if sem >= 0.85 and (lex > 0.10 or path_match > 0.0):
-            score += 0.06
+            score += 0.08
 
         score = min(1.0, score)
 
-        # Penalize semantically-only matches with no lexical/path/content evidence.
         if lex == 0.0 and path_match == 0.0 and content_overlap == 0.0:
-            if sem < 0.45:
+            if sem < 0.40:
+                score *= 0.25
+            elif sem < 0.55:
                 score *= 0.45
             elif sem < 0.70:
-                score *= 0.70
+                score *= 0.60
             else:
-                score *= 0.90
-        elif lex == 0.0 and path_match == 0.0 and content_overlap < 0.20:
+                score *= 0.80
+        elif lex == 0.0 and path_match == 0.0 and content_overlap < 0.15:
             if sem < 0.50:
+                score *= 0.55
+            elif sem < 0.70:
                 score *= 0.75
-            elif sem < 0.75:
-                score *= 0.90
 
         existing = grouped.get(path)
         if existing is None or score > existing["_score"]:
-            grouped[path] = {
+            entry: Dict[str, Any] = {
                 "file_path": path,
                 "file_name": os.path.basename(path),
                 "snippet": snippet[:300] if snippet else "",
@@ -204,6 +219,13 @@ def format_citations(
                 "_semantic": sem,
                 "_lexical": lex,
             }
+            page = chunk.get("page_number")
+            section = chunk.get("section")
+            if page is not None:
+                entry["page_number"] = page
+            if section:
+                entry["section"] = section
+            grouped[path] = entry
 
     ranked = sorted(grouped.values(), key=lambda c: c["_score"], reverse=True)
     if ranked:
@@ -217,7 +239,7 @@ def format_citations(
         if path_intent and any(c.get("_path_match", 0.0) > 0.0 for c in ranked):
             ranked = [c for c in ranked if c.get("_path_match", 0.0) > 0.0]
         else:
-            threshold = max(0.12, best * 0.80)
+            threshold = max(0.15, best * 0.60)
             ranked = [c for c in ranked if c["_score"] >= threshold]
 
     trimmed = ranked[:max_items]
