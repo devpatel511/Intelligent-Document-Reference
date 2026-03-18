@@ -67,9 +67,7 @@ class UnifiedDatabase:
     @staticmethod
     def _migrate_chunks_metadata(conn: sqlite3.Connection) -> None:
         """Add page_number and section columns if missing (schema migration)."""
-        cols = {
-            row[1] for row in conn.execute("PRAGMA table_info(chunks)").fetchall()
-        }
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(chunks)").fetchall()}
         if "page_number" not in cols:
             conn.execute("ALTER TABLE chunks ADD COLUMN page_number INTEGER")
         if "section" not in cols:

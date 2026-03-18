@@ -556,7 +556,9 @@ def _run_benchmark(args) -> None:
             probe_embed_client = build_runtime_client(
                 ctx, kind="embedding", prefs=probe_prefs
             )
-            probe_vector = probe_embed_client.embed_text(["benchmark dimension probe"])[0]
+            probe_vector = probe_embed_client.embed_text(["benchmark dimension probe"])[
+                0
+            ]
             probed_dimension = len(probe_vector)
             break
         except Exception as exc:
@@ -609,8 +611,12 @@ def _run_benchmark(args) -> None:
             if local_known is not None:
                 prefs["embedding_dimension"] = int(local_known)
 
-            ctx.embedding_client = build_runtime_client(ctx, kind="embedding", prefs=prefs)
-            ctx.inference_client = build_runtime_client(ctx, kind="inference", prefs=prefs)
+            ctx.embedding_client = build_runtime_client(
+                ctx, kind="embedding", prefs=prefs
+            )
+            ctx.inference_client = build_runtime_client(
+                ctx, kind="inference", prefs=prefs
+            )
         else:
             raise
     ctx.runtime_preferences = prefs

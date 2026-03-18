@@ -22,19 +22,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-
 ENTRY_RE = re.compile(r"--- \[(\d+)/(\d+)\] ([^\s]+) \(([^\)]+)\) ---")
 SUITE_RE = re.compile(r"=== Suite ([^:]+): dataset=([^,]+), prompts=(\d+) ===")
 RETRIEVAL_RE = re.compile(r"hit@1=(\d+)\s+hit@k=(\d+)\s+mrr=([0-9.]+)")
-RESPONSE_RE = re.compile(
-    r"composite=([0-9.]+)\s+keyword=([0-9.]+)\s+judge=([0-9.]+)"
-)
+RESPONSE_RE = re.compile(r"composite=([0-9.]+)\s+keyword=([0-9.]+)\s+judge=([0-9.]+)")
 CITATION_RE = re.compile(r"present=(\d+)\s+correct=(\d+)\s+halluc_rate=([0-9.]+)")
-LATENCY_RE = re.compile(
-    r"retrieval=(\d+)ms\s+inference=(\d+)ms\s+total=(\d+)ms"
-)
+LATENCY_RE = re.compile(r"retrieval=(\d+)ms\s+inference=(\d+)ms\s+total=(\d+)ms")
 CHUNK_RE = re.compile(r"Chunks=(\d+)\s+prompt_tokens=(\d+)\s+response_tokens=(\d+)")
-KV_META_RE = re.compile(r"category=([^\s]+)\s+file_type=([^\s]+)\s+folder_size=([^\s]+)")
+KV_META_RE = re.compile(
+    r"category=([^\s]+)\s+file_type=([^\s]+)\s+folder_size=([^\s]+)"
+)
 
 
 def _safe_literal_list(text: str) -> list[str]:
@@ -276,8 +273,18 @@ def generate_graphs(
         labels = [r["suite_id"] for r in dataset_rows]
 
         fig, ax = plt.subplots(figsize=(14, 6))
-        ax.plot(labels, [r["hit_rate_at_1"] for r in dataset_rows], marker="o", label="Hit@1")
-        ax.plot(labels, [r["hit_rate_at_k"] for r in dataset_rows], marker="o", label="Hit@K")
+        ax.plot(
+            labels,
+            [r["hit_rate_at_1"] for r in dataset_rows],
+            marker="o",
+            label="Hit@1",
+        )
+        ax.plot(
+            labels,
+            [r["hit_rate_at_k"] for r in dataset_rows],
+            marker="o",
+            label="Hit@K",
+        )
         ax.set_ylim(0, 1.05)
         ax.set_title("Dataset Retrieval Accuracy (Recovered from benchmark_run.log)")
         ax.set_ylabel("Rate")
@@ -289,8 +296,15 @@ def generate_graphs(
         plt.close(fig)
 
         fig, ax = plt.subplots(figsize=(14, 6))
-        ax.bar(labels, [r["avg_composite"] for r in dataset_rows], label="Composite", alpha=0.9)
-        ax.plot(labels, [r["avg_judge"] for r in dataset_rows], marker="o", label="Judge")
+        ax.bar(
+            labels,
+            [r["avg_composite"] for r in dataset_rows],
+            label="Composite",
+            alpha=0.9,
+        )
+        ax.plot(
+            labels, [r["avg_judge"] for r in dataset_rows], marker="o", label="Judge"
+        )
         ax.set_ylim(0, 1.05)
         ax.set_title("Dataset Response Scores")
         ax.set_ylabel("Score")
@@ -302,9 +316,20 @@ def generate_graphs(
         plt.close(fig)
 
         fig, ax = plt.subplots(figsize=(14, 6))
-        ax.bar(labels, [r["avg_total_ms"] for r in dataset_rows], color="steelblue", label="Avg total latency (ms)")
+        ax.bar(
+            labels,
+            [r["avg_total_ms"] for r in dataset_rows],
+            color="steelblue",
+            label="Avg total latency (ms)",
+        )
         ax2 = ax.twinx()
-        ax2.plot(labels, [r["throughput_qps"] for r in dataset_rows], marker="o", color="darkorange", label="QPS")
+        ax2.plot(
+            labels,
+            [r["throughput_qps"] for r in dataset_rows],
+            marker="o",
+            color="darkorange",
+            label="QPS",
+        )
         ax.set_title("Dataset Latency and Throughput")
         ax.set_ylabel("Milliseconds")
         ax2.set_ylabel("QPS")
@@ -343,9 +368,13 @@ def generate_graphs(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Parse benchmark_run.log and graph partial results")
+    parser = argparse.ArgumentParser(
+        description="Parse benchmark_run.log and graph partial results"
+    )
     parser.add_argument("--log", required=True, help="Path to benchmark_run.log")
-    parser.add_argument("--out", required=True, help="Output directory for parsed files and graphs")
+    parser.add_argument(
+        "--out", required=True, help="Output directory for parsed files and graphs"
+    )
     args = parser.parse_args()
 
     log_path = Path(args.log)

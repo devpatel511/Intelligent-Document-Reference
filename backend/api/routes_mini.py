@@ -10,9 +10,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 
+from backend.api.routes_files import load_file_indexing_config
 from backend.deps import get_context
 from core.context import AppContext
-from backend.api.routes_files import load_file_indexing_config
 
 router = APIRouter(prefix="/mini", tags=["mini"])
 logger = logging.getLogger(__name__)

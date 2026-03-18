@@ -503,7 +503,8 @@ def _process_single_file(
                 logger.warning(
                     "Dimension mismatch for %s — skipping. "
                     "Use Reindex in Settings to reconfigure the DB dimension. (%s)",
-                    discovered.path, dim_err,
+                    discovered.path,
+                    dim_err,
                 )
                 _register_and_mark_indexed(discovered, db)
                 return file_chunks, file_embs, n_generated
@@ -585,13 +586,20 @@ def run(
     chunks_generated = 0
 
     workers = min(cfg.max_workers, len(file_iter)) if file_iter else 1
-    per_file_timeout = 120  # seconds — prevent any single file from hanging the pipeline
+    per_file_timeout = (
+        120  # seconds — prevent any single file from hanging the pipeline
+    )
 
     if workers <= 1:
         for discovered in file_iter:
             files_processed += 1
             try:
-                logger.info("Indexing [%d/%d]: %s", files_processed, len(file_iter), discovered.path.name)
+                logger.info(
+                    "Indexing [%d/%d]: %s",
+                    files_processed,
+                    len(file_iter),
+                    discovered.path.name,
+                )
                 fc, fe, ng = _process_single_file(
                     discovered, cfg, root, embedder, llm_client, db
                 )
@@ -624,12 +632,16 @@ def run(
                     chunks_generated += ng
                     logger.info(
                         "Indexed [%d/%d] %s (%d chunks)",
-                        files_processed, len(file_iter), discovered.path.name, ng,
+                        files_processed,
+                        len(file_iter),
+                        discovered.path.name,
+                        ng,
                     )
                 except TimeoutError:
                     logger.error(
                         "Timed out processing %s after %ds — skipping",
-                        discovered.path, per_file_timeout,
+                        discovered.path,
+                        per_file_timeout,
                     )
                     _register_and_mark_indexed(discovered, db)
                 except Exception as e:

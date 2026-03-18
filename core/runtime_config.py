@@ -65,8 +65,12 @@ def resolve_runtime_preferences(ctx) -> Dict[str, Any]:
 
     # If provider is explicitly local and no explicit backend was stored yet,
     # default both sides to local.
-    inferred_inference = "local" if model_provider == "local" else default_inference_backend
-    inferred_embedding = "local" if model_provider == "local" else default_embedding_backend
+    inferred_inference = (
+        "local" if model_provider == "local" else default_inference_backend
+    )
+    inferred_embedding = (
+        "local" if model_provider == "local" else default_embedding_backend
+    )
 
     inference_backend = _normalize_backend(
         persisted.get("inference_backend"), _INFERENCE_BACKENDS, inferred_inference
@@ -76,9 +80,9 @@ def resolve_runtime_preferences(ctx) -> Dict[str, Any]:
     )
 
     # Keep legacy selectedModel as fallback for inference_model if present.
-    inference_model = _as_non_empty_str(persisted.get("inference_model")) or _as_non_empty_str(
-        persisted.get("selectedModel")
-    )
+    inference_model = _as_non_empty_str(
+        persisted.get("inference_model")
+    ) or _as_non_empty_str(persisted.get("selectedModel"))
     embedding_model = _as_non_empty_str(persisted.get("embedding_model"))
     embedding_dimension_raw = persisted.get(
         "embedding_dimension", getattr(ctx.settings, "embedding_dimension", 3072)
@@ -153,22 +157,30 @@ def apply_runtime_clients(ctx) -> Dict[str, Any]:
     try:
         ctx.embedding_client = build_runtime_client(ctx, kind="embedding", prefs=prefs)
     except Exception:
-        logger.exception("Failed to initialize embedding client with persisted settings")
+        logger.exception(
+            "Failed to initialize embedding client with persisted settings"
+        )
         fallback = dict(prefs)
         fallback["embedding_backend"] = "local"
         fallback["embedding_model"] = "nomic-embed-text"
-        ctx.embedding_client = build_runtime_client(ctx, kind="embedding", prefs=fallback)
+        ctx.embedding_client = build_runtime_client(
+            ctx, kind="embedding", prefs=fallback
+        )
         prefs["embedding_backend"] = "local"
         prefs["embedding_model"] = "nomic-embed-text"
 
     try:
         ctx.inference_client = build_runtime_client(ctx, kind="inference", prefs=prefs)
     except Exception:
-        logger.exception("Failed to initialize inference client with persisted settings")
+        logger.exception(
+            "Failed to initialize inference client with persisted settings"
+        )
         fallback = dict(prefs)
         fallback["inference_backend"] = "local"
         fallback["inference_model"] = "llama3"
-        ctx.inference_client = build_runtime_client(ctx, kind="inference", prefs=fallback)
+        ctx.inference_client = build_runtime_client(
+            ctx, kind="inference", prefs=fallback
+        )
         prefs["inference_backend"] = "local"
         prefs["inference_model"] = "llama3"
 

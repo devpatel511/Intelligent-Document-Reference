@@ -51,8 +51,12 @@ def score_file_retrieval(
     retrieved_norm = [normalize_path(f) for f in retrieved_files]
     expected_norm = normalize_path(expected_file)
 
-    hit_at_1 = int(bool(retrieved_norm) and _paths_match(retrieved_norm[0], expected_norm))
-    hit_at_k = int(any(_paths_match(path, expected_norm) for path in retrieved_norm[:top_k]))
+    hit_at_1 = int(
+        bool(retrieved_norm) and _paths_match(retrieved_norm[0], expected_norm)
+    )
+    hit_at_k = int(
+        any(_paths_match(path, expected_norm) for path in retrieved_norm[:top_k])
+    )
 
     mrr = 0.0
     for rank, path in enumerate(retrieved_norm, start=1):
@@ -79,7 +83,8 @@ def score_comparative_retrieval(
     expected_norm = [normalize_path(f) for f in expected_files]
 
     found = [
-        exp for exp in expected_norm
+        exp
+        for exp in expected_norm
         if any(_paths_match(path, exp) for path in retrieved_norm[:top_k])
     ]
     recall = len(found) / len(expected_norm) if expected_norm else 0.0

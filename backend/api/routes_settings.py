@@ -112,9 +112,8 @@ async def prewarm_external_get_caches(ctx: AppContext) -> None:
     """Best-effort startup prewarm for frequently used external GET endpoints."""
     if getattr(ctx, "settings_store", None) is None:
         return
-    endpoint = (
-        ctx.settings_store.get("localEndpoint", None)
-        or getattr(ctx.settings, "ollama_url", "")
+    endpoint = ctx.settings_store.get("localEndpoint", None) or getattr(
+        ctx.settings, "ollama_url", ""
     )
     endpoint = str(endpoint or "").strip()
     if not endpoint:
@@ -125,7 +124,9 @@ async def prewarm_external_get_caches(ctx: AppContext) -> None:
         logger.debug("Skipping cache prewarm for Ollama models: %s", exc)
 
 
-def _resolve_local_model_name(requested_model: str, installed_models: list[str]) -> str | None:
+def _resolve_local_model_name(
+    requested_model: str, installed_models: list[str]
+) -> str | None:
     if requested_model in installed_models:
         return requested_model
 
@@ -147,8 +148,14 @@ async def _probe_local_embedding_dimension(endpoint: str, model: str) -> int:
             )
             response.raise_for_status()
             payload = response.json()
-            embeddings = payload.get("embeddings") if isinstance(payload, dict) else None
-            if isinstance(embeddings, list) and embeddings and isinstance(embeddings[0], list):
+            embeddings = (
+                payload.get("embeddings") if isinstance(payload, dict) else None
+            )
+            if (
+                isinstance(embeddings, list)
+                and embeddings
+                and isinstance(embeddings[0], list)
+            ):
                 return len(embeddings[0])
         except httpx.HTTPStatusError as exc:
             # Fall back only if endpoint is unavailable on older Ollama versions.
@@ -211,7 +218,9 @@ async def _probe_dimension_support(
     return False, None
 
 
-def _suggest_dimensions(default_dimension: int, supported_probe: int | None) -> list[int]:
+def _suggest_dimensions(
+    default_dimension: int, supported_probe: int | None
+) -> list[int]:
     if default_dimension <= 0:
         return []
 
@@ -275,7 +284,8 @@ async def update_settings(
         "embedding_dimension", getattr(ctx.settings, "embedding_dimension", 3072)
     )
     previous_embedding_backend = ctx.settings_store.get(
-        "embedding_backend", getattr(ctx.settings, "default_embedding_backend", "gemini")
+        "embedding_backend",
+        getattr(ctx.settings, "default_embedding_backend", "gemini"),
     )
     previous_embedding_model = ctx.settings_store.get("embedding_model", None)
 
@@ -300,14 +310,18 @@ async def update_settings(
             model_changed = new_model != previous_embedding_model
 
             try:
-                new_dimension_raw = filtered.get("embedding_dimension", previous_dimension)
+                new_dimension_raw = filtered.get(
+                    "embedding_dimension", previous_dimension
+                )
                 new_dimension = int(new_dimension_raw)
                 old_dimension = int(previous_dimension)
             except (TypeError, ValueError):
                 new_dimension = None
                 old_dimension = None
 
-            target_dimension = new_dimension if (new_dimension and new_dimension > 0) else None
+            target_dimension = (
+                new_dimension if (new_dimension and new_dimension > 0) else None
+            )
 
             # Keep Gemini embeddings fixed at 3072 to avoid long probe calls and
             # ensure indexing remains stable.
@@ -348,7 +362,9 @@ async def update_settings(
                             endpoint=endpoint if new_backend == "local" else None,
                             embedding_dimension=None,
                         )
-                        target_dimension = await _probe_embedding_dimension(probe_client)
+                        target_dimension = await _probe_embedding_dimension(
+                            probe_client
+                        )
                 except Exception:
                     # Fallback without crashing settings update.
                     target_dimension = (
@@ -372,7 +388,9 @@ async def update_settings(
             except (TypeError, ValueError):
                 persisted_dimension = int(target_dimension)
             if int(target_dimension) != persisted_dimension:
-                ctx.settings_store.set_many({"embedding_dimension": int(target_dimension)})
+                ctx.settings_store.set_many(
+                    {"embedding_dimension": int(target_dimension)}
+                )
 
             if int(target_dimension) != int(old_dimension or 0):
                 ctx.db.reconfigure_vector_dimension(int(target_dimension))
@@ -405,10 +423,8 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
     if not ctx.db:
         raise HTTPException(status_code=503, detail="Database not initialized")
 
-    from core.runtime_config import (
-        apply_runtime_clients as _apply,
-        resolve_runtime_preferences as _resolve,
-    )
+    from core.runtime_config import apply_runtime_clients as _apply
+    from core.runtime_config import resolve_runtime_preferences as _resolve
 
     _apply(ctx)
 
@@ -429,7 +445,11 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
         if probe_vecs and probe_vecs[0]:
             target_dim = len(probe_vecs[0])
     except Exception as exc:
-        logger.warning("Could not probe embedding dimension, using config value %d: %s", target_dim, exc)
+        logger.warning(
+            "Could not probe embedding dimension, using config value %d: %s",
+            target_dim,
+            exc,
+        )
 
     # Always reconfigure: this drops stale data and ensures the vec_items
     # table AND the in-memory vector_dimension attribute both match the
@@ -438,7 +458,10 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
     current_db_dim = ctx.db.get_vector_dimension()
     logger.info(
         "Reindex: reconfiguring vector table %s -> %s (backend=%s, model=%s)",
-        current_db_dim, target_dim, eb, em,
+        current_db_dim,
+        target_dim,
+        eb,
+        em,
     )
     ctx.db.reconfigure_vector_dimension(target_dim)
     if ctx.settings_store:
@@ -448,8 +471,9 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
 
     file_indexing_cfg = None
     try:
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         cfg_path = Path("config/file_indexing.yaml")
         if cfg_path.exists():
@@ -463,9 +487,7 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
         paths_to_index.extend(
             file_indexing_cfg.get("inclusion", {}).get("directories", [])
         )
-        paths_to_index.extend(
-            file_indexing_cfg.get("inclusion", {}).get("files", [])
-        )
+        paths_to_index.extend(file_indexing_cfg.get("inclusion", {}).get("files", []))
 
     if not paths_to_index:
         return {
@@ -531,7 +553,9 @@ async def get_ollama_models(
         raise HTTPException(status_code=503, detail="Settings store not initialized")
 
     saved_endpoint = ctx.settings_store.get("localEndpoint", None)
-    target = (endpoint or saved_endpoint or getattr(ctx.settings, "ollama_url", "")).strip()
+    target = (
+        endpoint or saved_endpoint or getattr(ctx.settings, "ollama_url", "")
+    ).strip()
     if not target:
         raise HTTPException(status_code=400, detail="No Ollama endpoint configured")
 

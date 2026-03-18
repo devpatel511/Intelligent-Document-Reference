@@ -237,10 +237,21 @@ class ImageInput(InputDocument):
             try:
                 supports_image = bool(supports_image_input())
             except Exception as e:
-                logger.debug("Could not determine vision capability for %s: %s", src.identifier, e)
+                logger.debug(
+                    "Could not determine vision capability for %s: %s",
+                    src.identifier,
+                    e,
+                )
 
-        if use_vision and has_describe and callable(has_describe) and not supports_image:
-            model_name = getattr(llm_client, "chat_model", None) or getattr(llm_client, "model", "unknown-model")
+        if (
+            use_vision
+            and has_describe
+            and callable(has_describe)
+            and not supports_image
+        ):
+            model_name = getattr(llm_client, "chat_model", None) or getattr(
+                llm_client, "model", "unknown-model"
+            )
             if model_name not in _vision_capability_warned:
                 logger.warning(
                     "Selected inference model '%s' does not appear vision-capable. "
@@ -612,17 +623,25 @@ class PDFInput(InputDocument):
                         text = llm_client.describe_image(pg_bytes)
                         if text and text.strip():
                             text = text.strip()
-                            logger.info("VLM described page %d (%d chars)", pnum, len(text))
+                            logger.info(
+                                "VLM described page %d (%d chars)", pnum, len(text)
+                            )
                         else:
                             text = None
                     except Exception as e:
-                        logger.warning("VLM page description failed for page %d: %s", pnum, e)
+                        logger.warning(
+                            "VLM page description failed for page %d: %s", pnum, e
+                        )
                 if not text and ocr_enabled and ocr_provider:
                     try:
-                        r = ocr_provider.extract_text(pg_bytes, source_location=f"page_{pnum}")
+                        r = ocr_provider.extract_text(
+                            pg_bytes, source_location=f"page_{pnum}"
+                        )
                         text = r.text.strip() if r.text else None
                     except Exception as e:
-                        logger.warning("OCR page description failed for page %d: %s", pnum, e)
+                        logger.warning(
+                            "OCR page description failed for page %d: %s", pnum, e
+                        )
                 if not text:
                     text = f"[Scanned page {pnum} — image content, no text extracted]"
                 page_results[pnum] = [
@@ -635,9 +654,11 @@ class PDFInput(InputDocument):
                             extraction_method=(
                                 ExtractionMethod.LLM_ASSISTED
                                 if use_vision and has_describe
-                                else ExtractionMethod.OCR
-                                if ocr_enabled and ocr_provider
-                                else ExtractionMethod.NATIVE
+                                else (
+                                    ExtractionMethod.OCR
+                                    if ocr_enabled and ocr_provider
+                                    else ExtractionMethod.NATIVE
+                                )
                             ),
                         ),
                     )
@@ -742,7 +763,10 @@ class PDFInput(InputDocument):
 
             logger.info(
                 "PDF %s: %d content blocks before merging (use_vision=%s, has_describe=%s)",
-                src.identifier, len(blocks), use_vision, bool(has_describe),
+                src.identifier,
+                len(blocks),
+                use_vision,
+                bool(has_describe),
             )
             min_chars = getattr(config, "pdf_min_block_chars", 500) if config else 500
             max_chars = getattr(config, "pdf_max_block_chars", 2500) if config else 2500

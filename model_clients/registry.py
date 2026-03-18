@@ -65,7 +65,11 @@ class ClientRegistry:
         if backend == "gemini":
             resolved_api_key = api_key or settings.gemini_api_key
             if kind == "embedding":
-                dim = embedding_dimension if embedding_dimension and embedding_dimension > 0 else 3072
+                dim = (
+                    embedding_dimension
+                    if embedding_dimension and embedding_dimension > 0
+                    else 3072
+                )
                 return GoogleEmbeddingClient(
                     api_key=resolved_api_key or None,
                     model=model or "models/gemini-embedding-001",

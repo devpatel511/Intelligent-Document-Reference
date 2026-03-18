@@ -62,7 +62,8 @@ class OllamaClient(EmbeddingClient, InferenceClient):
         # Fast heuristic fallback for common local VLM names.
         lowered = target_model.lower()
         heuristic = any(
-            token in lowered for token in ("vl", "vision", "llava", "bakllava", "qwen2.5vl")
+            token in lowered
+            for token in ("vl", "vision", "llava", "bakllava", "qwen2.5vl")
         )
 
         try:
@@ -180,7 +181,9 @@ class OllamaClient(EmbeddingClient, InferenceClient):
                 payload = resp.json()
                 vec = payload.get("embedding")
                 if not isinstance(vec, list):
-                    raise ValueError("Unexpected Ollama /api/embeddings response format")
+                    raise ValueError(
+                        "Unexpected Ollama /api/embeddings response format"
+                    )
                 vectors.append(vec)
             return vectors
 

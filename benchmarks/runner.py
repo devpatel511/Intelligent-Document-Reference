@@ -154,7 +154,9 @@ class BenchmarkRunner:
             )
 
             for idx, prompt in enumerate(self.config.prompts):
-                result = await self._run_query(prompt, None, idx + 1, total, dataset_id="")
+                result = await self._run_query(
+                    prompt, None, idx + 1, total, dataset_id=""
+                )
                 results.append(result)
                 self._log_query_result(result, idx + 1, total)
 
@@ -203,10 +205,14 @@ class BenchmarkRunner:
         vector_dimension = int(
             (getattr(self.ctx, "runtime_preferences", {}) or {}).get(
                 "embedding_dimension",
-                getattr(getattr(self.ctx, "settings", None), "embedding_dimension", 3072),
+                getattr(
+                    getattr(self.ctx, "settings", None), "embedding_dimension", 3072
+                ),
             )
         )
-        benchmark_db = UnifiedDatabase(db_path=db_path, vector_dimension=vector_dimension)
+        benchmark_db = UnifiedDatabase(
+            db_path=db_path, vector_dimension=vector_dimension
+        )
         self.ctx.db = benchmark_db
 
         # Re-wire the responder so it uses the benchmark DB too
@@ -370,7 +376,8 @@ class BenchmarkRunner:
 
     async def _run_indexing(self) -> IndexingResult:
         """Index the dataset directory and return timing/counts."""
-        from ingestion.pipeline import PipelineConfig, run as run_ingestion
+        from ingestion.pipeline import PipelineConfig
+        from ingestion.pipeline import run as run_ingestion
 
         dataset_path = Path(self.config.dataset_path).resolve()
         if not dataset_path.exists():
@@ -661,7 +668,9 @@ class BenchmarkRunner:
             return False
         if actual_n == expected_n:
             return True
-        return actual_n.endswith("/" + expected_n) or expected_n.endswith("/" + actual_n)
+        return actual_n.endswith("/" + expected_n) or expected_n.endswith(
+            "/" + actual_n
+        )
 
     @staticmethod
     def _split_expected_paths(expected: str) -> List[str]:
@@ -718,11 +727,15 @@ class BenchmarkRunner:
                 "prompt_id": r.prompt_id,
                 "query_type": r.query_type,
                 "expected_file": r.scores.retrieval.expected_file,
-                "expected_files": self._split_expected_paths(r.scores.retrieval.expected_file),
+                "expected_files": self._split_expected_paths(
+                    r.scores.retrieval.expected_file
+                ),
                 "retrieved_files": r.scores.retrieval.retrieved_files,
                 "matched_expected_files": [
                     exp
-                    for exp in self._split_expected_paths(r.scores.retrieval.expected_file)
+                    for exp in self._split_expected_paths(
+                        r.scores.retrieval.expected_file
+                    )
                     if any(
                         self._paths_match_for_report(ret, exp)
                         for ret in r.scores.retrieval.retrieved_files
@@ -731,7 +744,9 @@ class BenchmarkRunner:
                 "match_debug": {
                     "matched_expected_count": sum(
                         1
-                        for exp in self._split_expected_paths(r.scores.retrieval.expected_file)
+                        for exp in self._split_expected_paths(
+                            r.scores.retrieval.expected_file
+                        )
                         if any(
                             self._paths_match_for_report(ret, exp)
                             for ret in r.scores.retrieval.retrieved_files
