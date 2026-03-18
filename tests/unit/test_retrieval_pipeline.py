@@ -197,9 +197,9 @@ class TestCitations:
                 "id": 20,
                 "file_path": "/docs/python_guide.md",
                 "text_content": "Python uses indentation for blocks and has dynamic typing.",
-                "distance": 0.05,
+                "distance": 0.03,
                 "hybrid_score": 0.16,
-                "lexical_score": 4,
+                "lexical_score": 6,
             },
             {
                 "id": 21,
@@ -215,7 +215,7 @@ class TestCitations:
         )
         assert len(citations) >= 1
         assert citations[0]["file_path"] == "/docs/python_guide.md"
-        assert citations[0]["relevance_score"] > 0.75
+        assert citations[0]["relevance_score"] > 0.85
 
 
 class TestResponder:

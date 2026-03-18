@@ -109,16 +109,16 @@ def _query_looks_noisy(query_terms: set[str], query: str) -> bool:
 def _confidence_for_display(score: float, noisy_query: bool) -> float:
     """Convert internal score to user-facing confidence in [0,1]."""
     # Piecewise calibration: weak evidence remains low, strong evidence rises quickly.
-    if score < 0.15:
+    if score < 0.10:
         conf = score * 0.20
-    elif score < 0.35:
-        conf = 0.03 + (score - 0.15) * 1.10
-    elif score < 0.55:
-        conf = 0.25 + (score - 0.35) * 1.60
-    elif score < 0.75:
-        conf = 0.57 + (score - 0.55) * 1.65
+    elif score < 0.30:
+        conf = 0.02 + (score - 0.10) * 1.10
+    elif score < 0.50:
+        conf = 0.24 + (score - 0.30) * 1.75
+    elif score < 0.70:
+        conf = 0.59 + (score - 0.50) * 1.50
     else:
-        conf = 0.90 + (score - 0.75) * 0.40
+        conf = 0.89 + (score - 0.70) * 0.30
 
     if noisy_query:
         conf *= 0.40
@@ -165,11 +165,29 @@ def format_citations(
             + 0.12 * content_overlap
         )
 
+        if sem >= 0.75 and content_overlap >= 0.25:
+            score += 0.12
+        elif sem >= 0.65 and content_overlap >= 0.20:
+            score += 0.08
+
+        if sem >= 0.85 and (lex > 0.10 or path_match > 0.0):
+            score += 0.06
+
+        score = min(1.0, score)
+
         # Penalize semantically-only matches with no lexical/path/content evidence.
         if lex == 0.0 and path_match == 0.0 and content_overlap == 0.0:
-            score *= 0.38 if sem < 0.55 else 0.75
+            if sem < 0.45:
+                score *= 0.45
+            elif sem < 0.70:
+                score *= 0.70
+            else:
+                score *= 0.90
         elif lex == 0.0 and path_match == 0.0 and content_overlap < 0.20:
-            score *= 0.72 if sem < 0.60 else 0.90
+            if sem < 0.50:
+                score *= 0.75
+            elif sem < 0.75:
+                score *= 0.90
 
         existing = grouped.get(path)
         if existing is None or score > existing["_score"]:

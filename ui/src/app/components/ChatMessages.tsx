@@ -5,10 +5,40 @@ import { User, Bot, FileText, ArrowDown } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { format } from 'date-fns';
 import { Button } from '@/app/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/app/components/ui/tooltip';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
+
+function confidenceMeta(score: number): { label: string; note: string; className: string } {
+  if (score >= 0.85) {
+    return {
+      label: 'Very high',
+      note: 'Strong evidence overlap with your query.',
+      className: 'text-emerald-700 dark:text-emerald-400',
+    };
+  }
+  if (score >= 0.65) {
+    return {
+      label: 'High',
+      note: 'Good support from retrieved context.',
+      className: 'text-green-700 dark:text-green-400',
+    };
+  }
+  if (score >= 0.40) {
+    return {
+      label: 'Medium',
+      note: 'Partially relevant evidence.',
+      className: 'text-amber-700 dark:text-amber-400',
+    };
+  }
+  return {
+    label: 'Low',
+    note: 'Weak match; treat as low-confidence context.',
+    className: 'text-rose-700 dark:text-rose-400',
+  };
+}
 
 export function ChatMessages() {
   const { messages, isLoading } = useChatContext();
@@ -105,7 +135,7 @@ export function ChatMessages() {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto"
+        className="h-full overflow-y-auto overflow-x-hidden"
       >
         <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
           {messages.map((message) => (
@@ -158,9 +188,22 @@ export function ChatMessages() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-medium truncate">{citation.file_name}</span>
-                            <span className="text-muted-foreground whitespace-nowrap">
-                              {Math.round(citation.relevance_score * 100)}% match
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className={cn(
+                                    'whitespace-nowrap cursor-help',
+                                    confidenceMeta(citation.relevance_score).className
+                                  )}
+                                >
+                                  {Math.round(citation.relevance_score * 100)}% match
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-56">
+                                <p className="font-medium">{confidenceMeta(citation.relevance_score).label} confidence</p>
+                                <p className="mt-1">{confidenceMeta(citation.relevance_score).note}</p>
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                           <p className="text-muted-foreground mt-1 line-clamp-2">
                             {citation.snippet}
