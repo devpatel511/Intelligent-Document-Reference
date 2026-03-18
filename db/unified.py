@@ -427,7 +427,11 @@ class UnifiedDatabase:
                 "CASE WHEN lower(f.path) LIKE ? THEN 6 ELSE 0 END",
                 "CASE WHEN lower(COALESCE(c.section,'')) LIKE ? THEN 3 ELSE 0 END",
             ]
-            params: List[Any] = [f"%{normalized}%", f"%{normalized}%", f"%{normalized}%"]
+            params: List[Any] = [
+                f"%{normalized}%",
+                f"%{normalized}%",
+                f"%{normalized}%",
+            ]
 
             for term in terms[:8]:
                 score_parts.append("CASE WHEN lower(f.path) LIKE ? THEN 2 ELSE 0 END")
