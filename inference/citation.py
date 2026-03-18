@@ -322,7 +322,7 @@ def format_citations(
         low_evidence_query = (
             (max_overlap < 0.20)
             and (not has_path_match)
-            and (max_semantic < 0.55)
+            and (max_semantic < 0.75)
             and (max_lexical < 0.08)
         )
 
