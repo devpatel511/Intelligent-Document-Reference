@@ -165,6 +165,32 @@ class TestCitations:
     def test_empty_chunks(self):
         assert format_citations([]) == []
 
+    def test_noise_query_lowers_display_confidence(self):
+        citations = format_citations(FAKE_CHUNKS, query="random rubbish asdf")
+        assert len(citations) >= 1
+        assert citations[0]["relevance_score"] < 0.35
+
+    def test_low_evidence_query_caps_confidence(self):
+        weak_chunks = [
+            {
+                "id": 10,
+                "file_path": "/docs/unrelated_alpha.md",
+                "text_content": "alpha beta gamma delta",
+                "distance": 0.34,
+                "hybrid_score": 0.08,
+            },
+            {
+                "id": 11,
+                "file_path": "/docs/unrelated_beta.md",
+                "text_content": "lorem ipsum dolor sit amet",
+                "distance": 0.36,
+                "hybrid_score": 0.07,
+            },
+        ]
+        citations = format_citations(weak_chunks, query="what is quantum donkey")
+        assert len(citations) >= 1
+        assert max(c["relevance_score"] for c in citations) < 0.35
+
 
 class TestResponder:
     @pytest.mark.asyncio

@@ -6,6 +6,8 @@ import { cn } from '@/app/components/ui/utils';
 import { format } from 'date-fns';
 import { Button } from '@/app/components/ui/button';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 
 export function ChatMessages() {
@@ -46,10 +48,16 @@ export function ChatMessages() {
     <div className="markdown-canvas text-sm">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw, rehypeSanitize]}
         components={{
           a: ({ ...props }) => (
             <a {...props} target="_blank" rel="noreferrer" />
           ),
+          ul: ({ ...props }) => <ul className="list-disc" {...props} />,
+          ol: ({ ...props }) => <ol className="list-decimal" {...props} />,
+          li: ({ ...props }) => <li {...props} />,
+          sup: ({ ...props }) => <sup className="align-super text-[0.75em]" {...props} />,
+          sub: ({ ...props }) => <sub className="align-sub text-[0.75em]" {...props} />,
           code: ({ className, children, ...props }) => {
             const raw = String(children || '');
             const isBlock = (className || '').startsWith('language-') || raw.includes('\n');
