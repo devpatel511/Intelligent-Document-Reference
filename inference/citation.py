@@ -108,15 +108,17 @@ def _query_looks_noisy(query_terms: set[str], query: str) -> bool:
 
 def _confidence_for_display(score: float, noisy_query: bool) -> float:
     """Convert internal score to user-facing confidence in [0,1]."""
-    # Keep confidence conservative so random/weak matches are clearly low.
-    if score < 0.20:
-        conf = score * 0.45
-    elif score < 0.45:
-        conf = 0.09 + (score - 0.20) * 0.60
-    elif score < 0.70:
-        conf = 0.24 + (score - 0.45) * 0.95
+    # Piecewise calibration: weak evidence remains low, strong evidence rises quickly.
+    if score < 0.15:
+        conf = score * 0.20
+    elif score < 0.35:
+        conf = 0.03 + (score - 0.15) * 1.10
+    elif score < 0.55:
+        conf = 0.25 + (score - 0.35) * 1.60
+    elif score < 0.75:
+        conf = 0.57 + (score - 0.55) * 1.65
     else:
-        conf = 0.40 + (score - 0.70) * 1.25
+        conf = 0.90 + (score - 0.75) * 0.40
 
     if noisy_query:
         conf *= 0.40
@@ -156,18 +158,18 @@ def format_citations(
 
         # Weighted evidence score [0,1]
         score = (
-            0.52 * sem
-            + 0.20 * hyb
-            + 0.10 * lex
-            + 0.08 * path_match
-            + 0.10 * content_overlap
+            0.58 * sem
+            + 0.16 * hyb
+            + 0.08 * lex
+            + 0.06 * path_match
+            + 0.12 * content_overlap
         )
 
         # Penalize semantically-only matches with no lexical/path/content evidence.
         if lex == 0.0 and path_match == 0.0 and content_overlap == 0.0:
-            score *= 0.40
+            score *= 0.38 if sem < 0.55 else 0.75
         elif lex == 0.0 and path_match == 0.0 and content_overlap < 0.20:
-            score *= 0.75
+            score *= 0.72 if sem < 0.60 else 0.90
 
         existing = grouped.get(path)
         if existing is None or score > existing["_score"]:
@@ -182,6 +184,8 @@ def format_citations(
                 "_score": score,
                 "_path_match": path_match,
                 "_content_overlap": content_overlap,
+                "_semantic": sem,
+                "_lexical": lex,
             }
 
     ranked = sorted(grouped.values(), key=lambda c: c["_score"], reverse=True)
@@ -205,7 +209,14 @@ def format_citations(
     if trimmed and q_terms:
         max_overlap = max(float(c.get("_content_overlap", 0.0)) for c in trimmed)
         has_path_match = any(float(c.get("_path_match", 0.0)) > 0.0 for c in trimmed)
-        low_evidence_query = (max_overlap < 0.20) and (not has_path_match)
+        max_semantic = max(float(c.get("_semantic", 0.0)) for c in trimmed)
+        max_lexical = max(float(c.get("_lexical", 0.0)) for c in trimmed)
+        low_evidence_query = (
+            (max_overlap < 0.20)
+            and (not has_path_match)
+            and (max_semantic < 0.55)
+            and (max_lexical < 0.08)
+        )
 
     if low_evidence_query:
         for citation in trimmed:
@@ -218,4 +229,6 @@ def format_citations(
         citation.pop("_score", None)
         citation.pop("_path_match", None)
         citation.pop("_content_overlap", None)
+        citation.pop("_semantic", None)
+        citation.pop("_lexical", None)
     return trimmed

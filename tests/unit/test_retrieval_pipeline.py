@@ -191,6 +191,32 @@ class TestCitations:
         assert len(citations) >= 1
         assert max(c["relevance_score"] for c in citations) < 0.35
 
+    def test_high_quality_match_can_reach_high_confidence(self):
+        strong_chunks = [
+            {
+                "id": 20,
+                "file_path": "/docs/python_guide.md",
+                "text_content": "Python uses indentation for blocks and has dynamic typing.",
+                "distance": 0.05,
+                "hybrid_score": 0.16,
+                "lexical_score": 4,
+            },
+            {
+                "id": 21,
+                "file_path": "/docs/other.md",
+                "text_content": "Misc notes.",
+                "distance": 0.45,
+                "hybrid_score": 0.03,
+            },
+        ]
+        citations = format_citations(
+            strong_chunks,
+            query="Explain Python indentation and dynamic typing",
+        )
+        assert len(citations) >= 1
+        assert citations[0]["file_path"] == "/docs/python_guide.md"
+        assert citations[0]["relevance_score"] > 0.75
+
 
 class TestResponder:
     @pytest.mark.asyncio

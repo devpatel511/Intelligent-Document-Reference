@@ -126,7 +126,7 @@ export function ChatMessages() {
 
               <div
                 className={cn(
-                  'flex-1 space-y-2 max-w-[80%]',
+                  'flex-1 min-w-0 space-y-2 max-w-[80%]',
                   message.role === 'user' && 'flex flex-col items-end'
                 )}
               >
@@ -141,7 +141,7 @@ export function ChatMessages() {
                   {message.role === 'assistant' ? (
                     renderMarkdown(message.content)
                   ) : (
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                   )}
                 </div>
 
