@@ -47,6 +47,14 @@ Runs uvicorn with `--reload` on `:8000` and the Vite dev server on `:5173`. Open
 
 ```bash
 python3 app.py --benchmark                              # defaults
+python3 app.py --benchmark local                        # local embed + local inference
+python3 app.py --benchmark api                          # OpenAI API embed + inference
+python3 app.py --benchmark gemini                       # Gemini embed + inference
+python3 app.py --benchmark local --embed nomic-embed-text --model llama3.2
+python3 app.py --benchmark local --embed embeddinggemma:latest --model deepseek-coder:6.7b --vlm qwen2.5vl:7b
+python3 app.py --benchmark local --benchmark-dataset-id 13 --benchmark-runs 1 --no-graphs
+python3 app.py --benchmark api --embed text-embedding-3-large --model gpt-4o-mini
+python3 app.py --benchmark api --embed models/gemini-embedding-001 --model gemini-2.5-flash-lite
 python3 app.py --benchmark --skip-indexing              # skip re-indexing
 python3 app.py --benchmark --benchmark-config my.yaml
 python3 app.py --benchmark --benchmark-runs 1 --no-graphs --benchmark-output results/
@@ -63,7 +71,7 @@ Create a `.env` file in the project root:
 | `GEMINI_API_KEY` | — | Google Gemini key |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint for local models |
 | `EMBEDDING_DIMENSION` | `3072` | Vector dimension (must match model) |
-| `OCR_ENABLED` | `true` | Enable Tesseract OCR for images |
+| `OCR_ENABLED` | `false` | Enable Tesseract OCR for images |
 
 YAML configs in `config/`: `models.yaml` (provider model IDs), `paths.yaml` (watch/exclude dirs), `file_indexing.yaml` (inclusion/exclusion rules, auto-managed by Settings UI).
 
@@ -78,8 +86,13 @@ python3 app.py [OPTIONS]
 --host HOST           Bind address (default: 127.0.0.1)
 --port PORT           Bind port (default: 8000)
 --benchmark           Run evaluation suite
+					  Optional preset: default|local|api|gemini
+--embed MODEL         Override embedding model for benchmark run
+--model MODEL         Override inference model for benchmark run
+--vlm MODEL           Optional VLM model for benchmark image-to-text ingestion
 --benchmark-config F  Benchmark YAML config
 --benchmark-dataset D Override dataset path
+--benchmark-dataset-id X Scope benchmark to one dataset + matching prompts (e.g. 13)
 --benchmark-output O  Override output directory
 --benchmark-runs N    Override runs per query
 --no-graphs           Skip graph generation

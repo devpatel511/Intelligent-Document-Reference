@@ -53,8 +53,6 @@ export function ChatMessages() {
   );
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  // Capture whether user was near bottom BEFORE the next render so the
-  // post-render useEffect can scroll correctly even after scrollHeight grows.
   const wasAtBottomRef = useRef(true);
 
   const isNearBottom = useCallback(() => {
@@ -70,7 +68,6 @@ export function ChatMessages() {
     }
   }, []);
 
-  // Auto-scroll after render if user was near bottom before the update
   useEffect(() => {
     if (wasAtBottomRef.current) {
       scrollToBottom();
@@ -204,8 +201,15 @@ export function ChatMessages() {
                       >
                         <FileText className="h-3.5 w-3.5 mt-0.5 text-blue-500 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium truncate">{citation.file_name}</span>
+                            {(citation.page_number || citation.section) && (
+                              <span className="text-muted-foreground">
+                                {citation.page_number ? `p.${citation.page_number}` : ''}
+                                {citation.page_number && citation.section ? ' · ' : ''}
+                                {citation.section || ''}
+                              </span>
+                            )}
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span
@@ -257,7 +261,7 @@ export function ChatMessages() {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 space-y-2 max-w-[80%]">
-                <div className="rounded-lg px-4 py-3 bg-muted">
+                <div className="rounded-xl px-4 py-3 assistant-canvas bg-card border border-border/80 shadow-sm">
                   <p className="text-sm text-muted-foreground">Thinking...</p>
                 </div>
               </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useChatContext, InferenceMode, ModelType } from '@/app/contexts/ChatContext';
+import { useChatContext, InferenceMode } from '@/app/contexts/ChatContext';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 import {
@@ -23,15 +23,19 @@ const modeLabels = {
   'deep-research': 'Deep Research',
 };
 
-const modelLabels = {
-  'gpt-4': 'GPT-4',
-  'gemini-2.5': 'Gemini 2.5',
-  'claude-3': 'Claude 3',
-  'llama-3': 'Llama 3',
-};
-
 export function ChatInput() {
-  const { inferenceMode, setInferenceMode, selectedModel, setSelectedModel, sendMessage, indexedFiles, indexedDirectories, pipelineReady, indexedChunkCount } =
+  const {
+    inferenceMode,
+    setInferenceMode,
+    selectedModel,
+    setSelectedModel,
+    availableInferenceModels,
+    sendMessage,
+    indexedFiles,
+    indexedDirectories,
+    pipelineReady,
+    indexedChunkCount,
+  } =
     useChatContext();
   const [input, setInput] = useState('');
 
@@ -106,16 +110,16 @@ export function ChatInput() {
             </SelectContent>
           </Select>
 
-          <Select value={selectedModel} onValueChange={(value) => setSelectedModel(value as ModelType)}>
+          <Select value={selectedModel} onValueChange={setSelectedModel}>
             <SelectTrigger className="w-[160px] h-9 border-black cursor-pointer">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(Object.keys(modelLabels) as ModelType[]).map((model) => (
+              {availableInferenceModels.map((model) => (
                 <SelectItem key={model} value={model} className="cursor-pointer">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4" />
-                    <span>{modelLabels[model]}</span>
+                    <span>{model}</span>
                   </div>
                 </SelectItem>
               ))}

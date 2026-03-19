@@ -8,13 +8,37 @@ class RAGProcessor:
     def __init__(self, inference_client: Any):
         self.client = inference_client
 
-    def build_prompt(self, query: str, chunks: List[Dict[str, Any]]) -> str:
-        """Build a retrieval-augmented prompt for markdown-only output."""
+    def build_prompt(
+        self,
+        query: str,
+        chunks: List[Dict[str, Any]],
+        *,
+        max_context_chars: int | None = None,
+        max_chunk_chars: int | None = None,
+    ) -> str:
+        """Build a retrieval-augmented prompt with source attributions."""
         context_str = ""
         for c in chunks:
-            context_str += (
-                f"\n[SOURCE: {c['file_path']}]\nCONTENT: {c['text_content']}\n"
-            )
+            chunk_text = c["text_content"]
+            if max_chunk_chars is not None and max_chunk_chars > 0:
+                chunk_text = chunk_text[:max_chunk_chars]
+
+            loc_parts = [c["file_path"]]
+            if c.get("page_number"):
+                loc_parts.append(f"Page {c['page_number']}")
+            if c.get("section"):
+                loc_parts.append(c["section"])
+            source_label = " | ".join(loc_parts)
+
+            segment = f"\n[SOURCE: {source_label}]\nCONTENT: {chunk_text}\n"
+            if max_context_chars is not None and max_context_chars > 0:
+                remaining = max_context_chars - len(context_str)
+                if remaining <= 0:
+                    break
+                if len(segment) > remaining:
+                    context_str += segment[:remaining]
+                    break
+            context_str += segment
 
         return (
             "You are a professional assistant. Use the context below to answer "
@@ -26,11 +50,23 @@ class RAGProcessor:
             f"USER QUESTION: {query}\nANSWER:"
         )
 
-    async def generate_response(self, query: str, chunks: List[Dict[str, Any]]) -> str:
+    async def generate_response(
+        self,
+        query: str,
+        chunks: List[Dict[str, Any]],
+        **generate_kwargs,
+    ) -> str:
         """Generate an LLM response from retrieved chunks.
 
         Wraps the synchronous client.generate call in asyncio.to_thread
         so the event loop is not blocked.
         """
-        prompt = self.build_prompt(query, chunks)
-        return await asyncio.to_thread(self.client.generate, prompt)
+        max_context_chars = generate_kwargs.pop("max_context_chars", None)
+        max_chunk_chars = generate_kwargs.pop("max_chunk_chars", None)
+        prompt = self.build_prompt(
+            query,
+            chunks,
+            max_context_chars=max_context_chars,
+            max_chunk_chars=max_chunk_chars,
+        )
+        return await asyncio.to_thread(self.client.generate, prompt, **generate_kwargs)
