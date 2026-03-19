@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useBeforeUnload, useNavigate } from 'react-router-dom';
 import { useChatContext } from '@/app/contexts/ChatContext';
 import { ExclusionConfigDialog } from '@/app/components/ExclusionConfigDialog';
 import { Button } from '@/app/components/ui/button';
@@ -11,16 +11,73 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/ta
 import { RadioGroup, RadioGroupItem } from '@/app/components/ui/radio-group';
 import { Slider } from '@/app/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { ArrowLeft, Moon, Sun, Save, X, FolderOpen, FilePlus } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/app/components/ui/select';
+import { ArrowLeft, Moon, Sun, Save, X, FolderOpen, FilePlus, RefreshCw, Trash2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
+
+type SettingsTab = 'general' | 'models' | 'indexing' | 'advanced';
+
+interface IndexingSnapshot {
+  indexedFiles: string[];
+  indexedDirectories: string[];
+  excludedFiles: string[];
+  excludedDirectories: string[];
+  exclusionPatterns: string[];
+}
+
+function normalizeList(items: string[]): string[] {
+  return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean))).sort();
+}
+
+function createIndexingSnapshot(
+  indexedFiles: string[],
+  indexedDirectories: string[],
+  excludedFiles: string[],
+  excludedDirectories: string[],
+  exclusionPatterns: string[]
+): IndexingSnapshot {
+  return {
+    indexedFiles: normalizeList(indexedFiles),
+    indexedDirectories: normalizeList(indexedDirectories),
+    excludedFiles: normalizeList(excludedFiles),
+    excludedDirectories: normalizeList(excludedDirectories),
+    exclusionPatterns: normalizeList(exclusionPatterns),
+  };
+}
+
+function snapshotsEqual(a: IndexingSnapshot, b: IndexingSnapshot): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const {
     modelProvider,
     setModelProvider,
+    inferenceBackend,
+    setInferenceBackend,
+    embeddingBackend,
+    setEmbeddingBackend,
+    selectedModel,
+    setSelectedModel,
+    embeddingModel,
+    setEmbeddingModel,
+    embeddingDimension,
+    setEmbeddingDimension,
+    availableInferenceModels,
+    availableEmbeddingModels,
+    availableEmbeddingDimensions,
+    localOllamaModels,
     localEndpoint,
     setLocalEndpoint,
+    refreshOllamaModels,
+    refreshEmbeddingDimensions,
     apiKeys,
     setApiKey,
     temperature,
@@ -33,7 +90,6 @@ export function SettingsPage() {
     setDarkMode,
     userInfo,
     setUserInfo,
-    syncWatcherPaths,
     indexedFiles,
     indexedDirectories,
     toggleIndexedFile,
@@ -49,6 +105,8 @@ export function SettingsPage() {
     saveSetting,
     pickFolder,
     pickFiles,
+    reindexRequired,
+    outdatedFileCount,
   } = useChatContext();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -56,6 +114,81 @@ export function SettingsPage() {
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isBrowsingExclusion, setIsBrowsingExclusion] = useState(false);
   const [isBrowsingFiles, setIsBrowsingFiles] = useState(false);
+  const [isScanningLocalModels, setIsScanningLocalModels] = useState(false);
+  const [isRefreshingEmbeddingDims, setIsRefreshingEmbeddingDims] = useState(false);
+  const [isReindexing, setIsReindexing] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+
+  const currentSnapshot = useMemo(
+    () =>
+      createIndexingSnapshot(
+        indexedFiles,
+        indexedDirectories,
+        excludedFiles,
+        excludedDirectories,
+        exclusionPatterns
+      ),
+    [indexedFiles, indexedDirectories, excludedFiles, excludedDirectories, exclusionPatterns]
+  );
+
+  const [savedSnapshot, setSavedSnapshot] = useState<IndexingSnapshot>(currentSnapshot);
+
+  const hasUnsavedIndexingChanges = useMemo(
+    () => !snapshotsEqual(currentSnapshot, savedSnapshot),
+    [currentSnapshot, savedSnapshot]
+  );
+
+  useEffect(() => {
+    if (!hasUnsavedIndexingChanges) {
+      setSavedSnapshot(currentSnapshot);
+    }
+  }, [currentSnapshot, hasUnsavedIndexingChanges]);
+
+  const showUnsavedIndexingWarning = useCallback(() => {
+    toast.error('Unsaved file indexing changes', {
+      description:
+        'Save Configuration to apply your updates, or undo them before leaving this page.',
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!hasUnsavedIndexingChanges) return;
+
+    window.history.pushState(null, '', window.location.href);
+
+    const handlePopState = () => {
+      showUnsavedIndexingWarning();
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [hasUnsavedIndexingChanges, showUnsavedIndexingWarning]);
+
+  useBeforeUnload(
+    useCallback(
+      (event) => {
+        if (!hasUnsavedIndexingChanges) return;
+        event.preventDefault();
+        event.returnValue = '';
+      },
+      [hasUnsavedIndexingChanges]
+    )
+  );
+
+  const guardNavigate = useCallback(
+    (target: string) => {
+      if (hasUnsavedIndexingChanges) {
+        showUnsavedIndexingWarning();
+        return;
+      }
+      navigate(target);
+    },
+    [hasUnsavedIndexingChanges, navigate, showUnsavedIndexingWarning]
+  );
 
   const handleDarkModeChange = async (enabled: boolean) => {
     setDarkMode(enabled);
@@ -150,6 +283,7 @@ export function SettingsPage() {
       });
 
       if (success) {
+        setSavedSnapshot(currentSnapshot);
         toast.success('File indexing configuration saved successfully!');
       } else {
         toast.error('Failed to save file indexing configuration.');
@@ -161,12 +295,98 @@ export function SettingsPage() {
     }
   };
 
+  const handleScanLocalModels = async () => {
+    setIsScanningLocalModels(true);
+    try {
+      const models = await refreshOllamaModels(localEndpoint);
+      if (models.length > 0) {
+        toast.success(`Found ${models.length} local model${models.length === 1 ? '' : 's'}.`);
+      } else {
+        toast.info('No local models found at that Ollama endpoint.');
+      }
+    } catch (error) {
+      toast.error(`Failed to scan local models: ${error}`);
+    } finally {
+      setIsScanningLocalModels(false);
+    }
+  };
+
+  const handleRefreshEmbeddingDimensions = async () => {
+    setIsRefreshingEmbeddingDims(true);
+    try {
+      const dims = await refreshEmbeddingDimensions(embeddingBackend, embeddingModel, {
+        forceDefault: true,
+        forceRefresh: true,
+      });
+      if (dims.length > 0) {
+        toast.success('Embedding dimensions refreshed for selected model.');
+      } else {
+        toast.info('No embedding dimensions available for selected model.');
+      }
+    } catch (error) {
+      toast.error(`Failed to refresh embedding dimensions: ${error}`);
+    } finally {
+      setIsRefreshingEmbeddingDims(false);
+    }
+  };
+
+  const handleReindex = async () => {
+    setIsReindexing(true);
+    try {
+      const res = await fetch('/settings/reindex', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || 'Reindex complete!');
+      } else {
+        toast.error(data.detail || 'Reindex failed.');
+      }
+    } catch (error) {
+      toast.error(`Reindex failed: ${error instanceof Error ? error.message : error}`);
+    } finally {
+      setIsReindexing(false);
+    }
+  };
+
+  const handleClearIndexes = async () => {
+    if (!window.confirm('This will remove all indexed chunks and vectors. Are you sure?')) {
+      return;
+    }
+    setIsClearing(true);
+    try {
+      const res = await fetch('/settings/clear-indexes', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || 'All indexes cleared.');
+      } else {
+        toast.error(data.detail || 'Failed to clear indexes.');
+      }
+    } catch (error) {
+      toast.error(`Clear failed: ${error instanceof Error ? error.message : error}`);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const embeddingProviderLabel =
+    embeddingBackend === 'local'
+      ? 'Ollama'
+      : embeddingBackend === 'gemini'
+        ? 'Gemini API'
+        : embeddingBackend === 'voyage'
+          ? 'Voyage API'
+          : 'OpenAI API';
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-card">
         <div className="px-4 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/chat')} className="cursor-pointer">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => guardNavigate('/chat')}
+            className="cursor-pointer"
+          >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-2xl font-semibold">Settings</h1>
@@ -175,7 +395,17 @@ export function SettingsPage() {
 
       {/* Settings Content */}
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <Tabs defaultValue="general" className="w-full">
+        {reindexRequired && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+            <p className="text-sm font-medium">Reindex required after embedding configuration change</p>
+            <p className="text-xs mt-1">
+              {outdatedFileCount > 0
+                ? `${outdatedFileCount} file${outdatedFileCount === 1 ? '' : 's'} marked outdated. Run indexing to rebuild vectors.`
+                : 'Some vectors are outdated. Run indexing to rebuild vectors.'}
+            </p>
+          </div>
+        )}
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as SettingsTab)} className="w-full">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="general" className="cursor-pointer">General Settings</TabsTrigger>
             <TabsTrigger value="models" className="cursor-pointer">Model Configuration</TabsTrigger>
@@ -296,54 +526,182 @@ export function SettingsPage() {
                   </div>
                 </RadioGroup>
 
-                {modelProvider === 'local' ? (
+                <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="endpoint">Local Inference Endpoint</Label>
-                    <Input
-                      id="endpoint"
-                      type="url"
-                      placeholder="http://localhost:8000"
-                      value={localEndpoint}
-                      onChange={(e) => setLocalEndpoint(e.target.value)}
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Enter the URL of your local inference server (e.g., Ollama, LM Studio)
-                    </p>
+                    <Label>Inference Backend</Label>
+                    <Select value={inferenceBackend} onValueChange={(value) => setInferenceBackend(value as 'local' | 'api' | 'gemini' | 'voyage')}>
+                      <SelectTrigger className="cursor-pointer">
+                        <SelectValue placeholder="Choose inference backend" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gemini" className="cursor-pointer">Google Gemini</SelectItem>
+                        <SelectItem value="local" className="cursor-pointer">Local (Ollama)</SelectItem>
+                        <SelectItem value="api" className="cursor-pointer">OpenAI API</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                ) : (
-                  <div className="space-y-4">
+
+                  <div className="space-y-2">
+                    <Label>Embedding Backend</Label>
+                    <Select value={embeddingBackend} onValueChange={(value) => setEmbeddingBackend(value as 'local' | 'api' | 'gemini' | 'voyage')}>
+                      <SelectTrigger className="cursor-pointer">
+                        <SelectValue placeholder="Choose embedding backend" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gemini" className="cursor-pointer">Google Gemini</SelectItem>
+                        <SelectItem value="local" className="cursor-pointer">Local (Ollama)</SelectItem>
+                        <SelectItem value="api" className="cursor-pointer">OpenAI API</SelectItem>
+                        <SelectItem value="voyage" className="cursor-pointer">Voyage AI</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {(inferenceBackend === 'local' || embeddingBackend === 'local') && (
+                  <div className="space-y-3 rounded-lg border border-input p-4">
                     <div className="space-y-2">
-                      <Label htmlFor="gpt4-key">OpenAI API Key (GPT-4)</Label>
+                      <Label htmlFor="endpoint">Ollama Endpoint</Label>
                       <Input
-                        id="gpt4-key"
-                        type="password"
-                        placeholder="sk-..."
-                        value={apiKeys['gpt-4'] || ''}
-                        onChange={(e) => setApiKey('gpt-4', e.target.value)}
+                        id="endpoint"
+                        type="url"
+                        placeholder="http://localhost:11434"
+                        value={localEndpoint}
+                        onChange={(e) => setLocalEndpoint(e.target.value)}
                       />
+                      <p className="text-sm text-muted-foreground">
+                        Use your local Ollama host. Then scan to list installed models.
+                      </p>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="gemini-key">Google API Key (Gemini 2.5)</Label>
-                      <Input
-                        id="gemini-key"
-                        type="password"
-                        placeholder="AI..."
-                        value={apiKeys['gemini-2.5'] || ''}
-                        onChange={(e) => setApiKey('gemini-2.5', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="claude-key">Anthropic API Key (Claude 3)</Label>
-                      <Input
-                        id="claude-key"
-                        type="password"
-                        placeholder="sk-ant-..."
-                        value={apiKeys['claude-3'] || ''}
-                        onChange={(e) => setApiKey('claude-3', e.target.value)}
-                      />
+
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm text-muted-foreground">
+                        {localOllamaModels.length > 0
+                          ? `${localOllamaModels.length} local model${localOllamaModels.length === 1 ? '' : 's'} detected`
+                          : 'No local models detected yet'}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleScanLocalModels}
+                        disabled={isScanningLocalModels}
+                        className="cursor-pointer"
+                      >
+                        <RefreshCw className={`h-4 w-4 mr-2 ${isScanningLocalModels ? 'animate-spin' : ''}`} />
+                        {isScanningLocalModels ? 'Scanning...' : 'Scan Local Models'}
+                      </Button>
                     </div>
                   </div>
                 )}
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Inference Model</Label>
+                    <Select value={selectedModel} onValueChange={setSelectedModel}>
+                      <SelectTrigger className="cursor-pointer">
+                        <SelectValue placeholder="Choose inference model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableInferenceModels.map((modelName) => (
+                          <SelectItem key={modelName} value={modelName} className="cursor-pointer">
+                            {modelName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Embedding Model</Label>
+                    <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
+                      <SelectTrigger className="cursor-pointer">
+                        <SelectValue placeholder="Choose embedding model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableEmbeddingModels.map((modelName) => (
+                          <SelectItem key={modelName} value={modelName} className="cursor-pointer">
+                            {modelName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-lg border border-input p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <Label>Embedding Dimension Configuration</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Active provider: {embeddingProviderLabel} | Active model: {embeddingModel}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleRefreshEmbeddingDimensions}
+                      disabled={isRefreshingEmbeddingDims}
+                      className="cursor-pointer"
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshingEmbeddingDims ? 'animate-spin' : ''}`} />
+                      {isRefreshingEmbeddingDims ? 'Refreshing...' : 'Use Model Default'}
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Embedding Dimension</Label>
+                    <Select
+                      value={String(embeddingDimension)}
+                      onValueChange={(value) => setEmbeddingDimension(Number(value))}
+                    >
+                      <SelectTrigger className="cursor-pointer">
+                        <SelectValue placeholder="Choose embedding dimension" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableEmbeddingDimensions.map((dim) => (
+                          <SelectItem key={dim} value={String(dim)} className="cursor-pointer">
+                            {dim}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-sm text-muted-foreground">
+                      Defaults are model-aware; changing this lets you override within supported sizes.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="gemini-key">Google API Key</Label>
+                    <Input
+                      id="gemini-key"
+                      type="password"
+                      placeholder="AI..."
+                      value={apiKeys.gemini || ''}
+                      onChange={(e) => setApiKey('gemini', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="openai-key">OpenAI API Key</Label>
+                    <Input
+                      id="openai-key"
+                      type="password"
+                      placeholder="sk-..."
+                      value={apiKeys.openai || ''}
+                      onChange={(e) => setApiKey('openai', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="voyage-key">Voyage API Key</Label>
+                    <Input
+                      id="voyage-key"
+                      type="password"
+                      placeholder="pa-..."
+                      value={apiKeys.voyage || ''}
+                      onChange={(e) => setApiKey('voyage', e.target.value)}
+                    />
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -510,6 +868,12 @@ export function SettingsPage() {
                   )}
                 </div>
 
+                {hasUnsavedIndexingChanges && (
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    You have unsaved indexing changes. Save Configuration before leaving this page.
+                  </p>
+                )}
+
                 <div className="flex items-center justify-between pt-4 border-t">
                   <p className="text-sm text-muted-foreground">
                     Included files will be used for retrieval-augmented generation, while excluded files will be ignored.
@@ -530,6 +894,57 @@ export function SettingsPage() {
                         Save Configuration
                       </>
                     )}
+                  </Button>
+                </div>
+                {hasUnsavedIndexingChanges && (
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    You have unsaved indexing changes. Save Configuration before leaving this page.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Index Management Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Index Management</CardTitle>
+                <CardDescription>
+                  Reindex files or clear all stored chunks and embeddings
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Reindex All Files</p>
+                    <p className="text-xs text-muted-foreground">
+                      Re-embed and re-store all configured files. Useful after switching embedding models.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleReindex}
+                    disabled={isReindexing}
+                    className="cursor-pointer"
+                  >
+                    <RotateCcw className={`h-4 w-4 mr-2 ${isReindexing ? 'animate-spin' : ''}`} />
+                    {isReindexing ? 'Reindexing...' : 'Reindex'}
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t">
+                  <div>
+                    <p className="text-sm font-medium text-destructive">Clear All Indexes</p>
+                    <p className="text-xs text-muted-foreground">
+                      Remove all chunks, vectors, and file records from the database.
+                    </p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    onClick={handleClearIndexes}
+                    disabled={isClearing}
+                    className="cursor-pointer"
+                  >
+                    <Trash2 className={`h-4 w-4 mr-2 ${isClearing ? 'animate-spin' : ''}`} />
+                    {isClearing ? 'Clearing...' : 'Clear Indexes'}
                   </Button>
                 </div>
               </CardContent>
