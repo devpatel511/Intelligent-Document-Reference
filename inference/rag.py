@@ -22,7 +22,7 @@ class RAGProcessor:
         system_instruction = system_prompt or (
             "You are a professional assistant. Use the context below to answer accurately and concisely."
         )
-        
+
         context_str = ""
         for c in chunks:
             chunk_text = c["text_content"]
