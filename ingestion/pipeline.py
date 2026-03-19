@@ -389,8 +389,15 @@ def _register_and_mark_failed(
             discovered.modified_timestamp,
         )
         if hasattr(db, "mark_file_failed"):
-            db.mark_file_failed(file_id)
+            # Prefer the path-based failed-status API (used by the UI).
+            db.mark_file_failed(
+                str(discovered.path),
+                file_hash,
+                discovered.size_bytes,
+                discovered.modified_timestamp,
+            )
         else:
+            # Backwards-compat fallback.
             db.mark_file_indexed(file_id)
     except Exception as exc:
         logger.warning(
