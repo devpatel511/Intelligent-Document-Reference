@@ -94,6 +94,10 @@ export function SettingsPage() {
     setTemperature,
     contextSize,
     setContextSize,
+    topK,
+    setTopK,
+    chunkSize,
+    setChunkSize,
     systemPrompt,
     setSystemPrompt,
     darkMode,
@@ -1046,19 +1050,44 @@ export function SettingsPage() {
                 <CardTitle>Retrieval Settings</CardTitle>
                 <CardDescription>Configure RAG retrieval behavior</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="top-k">Top-K Results</Label>
-                  <Input id="top-k" type="number" defaultValue="5" min="1" max="20" />
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="top-k">Top-K Results</Label>
+                    <span className="text-sm text-muted-foreground">{topK}</span>
+                  </div>
+                  <Slider
+                    id="top-k"
+                    min={1}
+                    max={20}
+                    step={1}
+                    value={[topK]}
+                    onValueChange={(value) => setTopK(value[0])}
+                    className="cursor-pointer"
+                  />
                   <p className="text-sm text-muted-foreground">
-                    Number of relevant documents to retrieve
+                    Number of relevant documents to retrieve per query
                   </p>
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="chunk-size">Chunk Size</Label>
-                  <Input id="chunk-size" type="number" defaultValue="512" min="128" max="2048" />
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="chunk-size">Chunk Size (tokens)</Label>
+                    <span className="text-sm text-muted-foreground">
+                      {chunkSize !== null ? chunkSize : 'Default (300-700)'}
+                    </span>
+                  </div>
+                  <Slider
+                    id="chunk-size"
+                    min={128}
+                    max={2048}
+                    step={128}
+                    value={[chunkSize !== null ? chunkSize : 512]}
+                    onValueChange={(value) => setChunkSize(value[0])}
+                    className="cursor-pointer"
+                  />
                   <p className="text-sm text-muted-foreground">
-                    Size of text chunks for document processing
+                    Size of text chunks for document indexing (used for future re-indexing)
                   </p>
                 </div>
               </CardContent>

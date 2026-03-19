@@ -45,6 +45,8 @@ ALLOWED_KEYS = {
     "embedding_model",
     "inference_model",
     "embedding_dimension",
+    "top_k",
+    "chunk_size",
 }
 
 
