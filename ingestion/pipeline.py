@@ -466,7 +466,9 @@ def _process_single_file(
     if len(embs) != len(chunks):
         logger.warning(
             "Embedding count mismatch for %s: %d chunks vs %d embeddings",
-            discovered.path, len(chunks), len(embs),
+            discovered.path,
+            len(chunks),
+            len(embs),
         )
         for c in chunks:
             rec = dict(c)
