@@ -1,11 +1,96 @@
 import { useState, useEffect } from 'react';
 import { useChatContext, FileNode } from '@/app/contexts/ChatContext';
 import { Checkbox } from '@/app/components/ui/checkbox';
-import { ChevronLeft, ChevronRight, File, Folder, Ban, Loader2, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, File, Folder, Ban, CheckCircle2, RefreshCw } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
 interface FileNavigatorProps {
   type: 'context' | 'indexing' | 'exclusion';
+}
+
+type NodeStatus = Exclude<FileNode['status'], undefined>;
+
+function collectLeafStatuses(node: FileNode): NodeStatus[] {
+  if (node.type === 'file') {
+    if (node.status === 'unsupported') return [];
+    // Backend always provides a status for supported file types; fallback to pending for safety.
+    return [(node.status ?? 'pending') as NodeStatus];
+  }
+  return (node.children ?? []).flatMap(collectLeafStatuses);
+}
+
+function getFolderStatus(node: FileNode): NodeStatus | undefined {
+  const statuses = collectLeafStatuses(node);
+  if (statuses.length === 0) return undefined;
+
+  // If every leaf is indexed, show the green check.
+  if (statuses.every((s) => s === 'indexed')) return 'indexed';
+
+  // "Not indexed yet" corresponds to backend "pending".
+  if (statuses.some((s) => s === 'pending')) return 'pending';
+
+  if (statuses.some((s) => s === 'failed')) return 'failed';
+  if (statuses.some((s) => s === 'outdated')) return 'outdated';
+
+  // Mixed/unknown: pick the first stable priority.
+  return statuses[0];
+}
+
+function StatusIndicator({
+  status,
+  title,
+}: {
+  status: NodeStatus;
+  title?: string;
+}) {
+  const effectiveTitle =
+    title ??
+    (status === 'indexed'
+      ? 'Indexed & available'
+      : status === 'pending'
+        ? 'Not indexed yet'
+        : status === 'unsupported'
+          ? 'Unsupported file type'
+          : status === 'failed'
+            ? 'Indexing failed'
+            : status === 'outdated'
+              ? 'Re-indexing…'
+              : '');
+
+  // Red dot for "not indexed yet" and for errors (corrupted PDF, code errors, etc.)
+  if (status === 'pending' || status === 'failed') {
+    return (
+      <span title={effectiveTitle} className="shrink-0 flex items-center">
+        <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+      </span>
+    );
+  }
+
+  if (status === 'indexed') {
+    return (
+      <span title={effectiveTitle} className="shrink-0 flex items-center">
+        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+      </span>
+    );
+  }
+
+  if (status === 'outdated') {
+    return (
+      <span title={effectiveTitle} className="shrink-0 flex items-center">
+        <RefreshCw className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+      </span>
+    );
+  }
+
+  if (status === 'unsupported') {
+    return (
+      <span title={effectiveTitle} className="shrink-0 flex items-center">
+        <Ban className="h-3.5 w-3.5 text-muted-foreground/60" />
+      </span>
+    );
+  }
+
+  return null;
 }
 
 function getAllLeafFiles(node: FileNode): string[] {
@@ -176,6 +261,27 @@ export function FileNavigator({ type }: FileNavigatorProps) {
                     <Folder className="h-4 w-4 text-blue-500 shrink-0" />
                     <span className="text-sm truncate">{node.name}</span>
                   </button>
+                  {(() => {
+                    const folderStatus = getFolderStatus(node);
+                    if (!folderStatus) return null;
+                    if (folderStatus === 'pending') {
+                      return (
+                        <StatusIndicator
+                          status="pending"
+                          title="Contains files not indexed yet"
+                        />
+                      );
+                    }
+                    if (folderStatus === 'failed') {
+                      return (
+                        <StatusIndicator
+                          status="failed"
+                          title="Contains files with indexing errors (e.g. corrupted PDF or code errors)"
+                        />
+                      );
+                    }
+                    return <StatusIndicator status={folderStatus} />;
+                  })()}
                   <button
                     onClick={() => enterFolder(node)}
                     className="p-0.5 rounded hover:bg-accent-foreground/10 cursor-pointer shrink-0"
@@ -216,29 +322,15 @@ export function FileNavigator({ type }: FileNavigatorProps) {
                     node.status === 'unsupported' && 'text-muted-foreground line-through'
                   )}>{node.name}</span>
                   {/* Status indicator */}
-                  {node.status === 'indexed' && (
-                    <span title="Indexed &amp; available" className="shrink-0 flex items-center">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                    </span>
-                  )}
-                  {node.status === 'pending' && (
-                    <span title="Indexing…" className="shrink-0 flex items-center">
-                      <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin" />
-                    </span>
-                  )}
-                  {node.status === 'unsupported' && (
-                    <span title="Unsupported file type" className="shrink-0 flex items-center">
-                      <Ban className="h-3.5 w-3.5 text-muted-foreground/60" />
-                    </span>
-                  )}
-                  {(node.status === 'failed' || node.status === 'outdated') && (
-                    <span title={node.status === 'failed' ? 'Indexing failed' : 'Re-indexing…'} className="shrink-0 flex items-center">
-                      {node.status === 'outdated' ? (
-                        <RefreshCw className="h-3.5 w-3.5 text-blue-500 animate-spin" />
-                      ) : (
-                        <AlertCircle className="h-3.5 w-3.5 text-red-500" />
-                      )}
-                    </span>
+                  {node.status && (
+                    <StatusIndicator
+                      status={node.status as NodeStatus}
+                      title={
+                        node.status === 'pending'
+                          ? 'Not indexed yet'
+                          : undefined
+                      }
+                    />
                   )}
                 </div>
               )
