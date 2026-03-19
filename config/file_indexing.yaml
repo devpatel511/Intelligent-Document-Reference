@@ -1,13 +1,10 @@
 inclusion:
-  files:
-  - C:\Users\sharatdev\Downloads\report (2).pdf
-  - C:\Users\sharatdev\Downloads\math.pdf
-  directories: []
+  files: []
+  directories:
+  - C:\Users\sharatdev\Desktop\projects\Intelligent-Document-Reference-Winter2026\datasets\dataset8
 exclusion:
   files: []
   directories: []
   patterns: []
 context:
-  files:
-  - C:\Users\sharatdev\Downloads\report (2).pdf
-  - C:\Users\sharatdev\Downloads\math.pdf
+  files: []

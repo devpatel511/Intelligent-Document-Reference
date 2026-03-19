@@ -549,6 +549,18 @@ class UnifiedDatabase:
         finally:
             conn.close()
 
+    def mark_file_failed(self, file_id: int) -> None:
+        """Set file status to 'failed' so the UI does not show a false positive."""
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "UPDATE files SET status = 'failed' WHERE id = ?",
+                (file_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     def update_file_metadata(self, file_path: str, modified: float) -> None:
         """
         Updates only the metadata (last_modified_timestamp) for a file.

@@ -307,8 +307,7 @@ def _register_and_mark_indexed(
     """Register a file in the DB and mark it indexed (no chunks to store).
 
     Called when a file was successfully parsed but produced no storable
-    content (e.g. too short, empty after filtering, embedding failed).
-    Prevents the UI from showing a perpetual pending spinner.
+    content (e.g. too short, empty after filtering).
     """
     if not db:
         return
@@ -327,6 +326,39 @@ def _register_and_mark_indexed(
     except Exception as exc:
         logger.warning(
             "Failed to mark %s as indexed (no chunks): %s", discovered.path, exc
+        )
+
+
+def _register_and_mark_failed(
+    discovered: DiscoveredFile,
+    db: Optional[Any],
+    reason: str = "",
+) -> None:
+    """Register a file in the DB and mark it as failed.
+
+    Called when embedding or storage failed so the UI shows the file
+    needs attention rather than a false-positive green checkmark.
+    """
+    if not db:
+        return
+    try:
+        file_hash = (
+            discovered.content_hash
+            or hashlib.sha256(str(discovered.path).encode()).hexdigest()
+        )
+        file_id = db.register_file(
+            str(discovered.path),
+            file_hash,
+            discovered.size_bytes,
+            discovered.modified_timestamp,
+        )
+        if hasattr(db, "mark_file_failed"):
+            db.mark_file_failed(file_id)
+        else:
+            db.mark_file_indexed(file_id)
+    except Exception as exc:
+        logger.warning(
+            "Failed to mark %s as failed (%s): %s", discovered.path, reason, exc
         )
 
 
@@ -428,15 +460,19 @@ def _process_single_file(
             rec = dict(c)
             rec["file_path"] = str(discovered.path)
             file_chunks.append(rec)
-        _register_and_mark_indexed(discovered, db)
+        _register_and_mark_failed(discovered, db, reason="embedding_failed")
         return file_chunks, file_embs, n_generated
 
     if len(embs) != len(chunks):
+        logger.warning(
+            "Embedding count mismatch for %s: %d chunks vs %d embeddings",
+            discovered.path, len(chunks), len(embs),
+        )
         for c in chunks:
             rec = dict(c)
             rec["file_path"] = str(discovered.path)
             file_chunks.append(rec)
-        _register_and_mark_indexed(discovered, db)
+        _register_and_mark_failed(discovered, db, reason="embedding_count_mismatch")
         return file_chunks, file_embs, n_generated
 
     if cfg.dedup_enabled:
@@ -506,7 +542,7 @@ def _process_single_file(
                     discovered.path,
                     dim_err,
                 )
-                _register_and_mark_indexed(discovered, db)
+                _register_and_mark_failed(discovered, db, reason="dimension_mismatch")
                 return file_chunks, file_embs, n_generated
             raise
         db.mark_file_indexed(file_id)
@@ -608,6 +644,7 @@ def run(
                 chunks_generated += ng
             except Exception as e:
                 logger.exception("Failed to process %s: %s", discovered.path, e)
+                _register_and_mark_failed(discovered, db, reason=str(e)[:200])
     else:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             future_to_file = {
@@ -643,9 +680,10 @@ def run(
                         discovered.path,
                         per_file_timeout,
                     )
-                    _register_and_mark_indexed(discovered, db)
+                    _register_and_mark_failed(discovered, db, reason="timeout")
                 except Exception as e:
                     logger.exception("Failed to process %s: %s", discovered.path, e)
+                    _register_and_mark_failed(discovered, db, reason=str(e)[:200])
 
     if cfg.log_chunks_generated:
         logger.info("Chunks generated: %d", chunks_generated)

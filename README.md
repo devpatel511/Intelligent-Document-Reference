@@ -60,18 +60,6 @@ python3 app.py --benchmark --benchmark-config my.yaml
 python3 app.py --benchmark --benchmark-runs 1 --no-graphs --benchmark-output results/
 ```
 
-Benchmark mode bypasses the UI and runs the full ingestion -> chunk -> embed -> retrieve -> generate pipeline directly from benchmark YAML.
-The benchmark runner now auto-probes the selected embedding model's default vector dimension and builds an isolated benchmark DB with that dimension to avoid embedding/index mismatches.
-API keys can come from either saved UI settings or `.env` (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `VOYAGE_API_KEY`).
-Benchmark mode forces `OCR_ENABLED=false`, so runs do not depend on Tesseract.
-Use `--benchmark-dataset-id` to run one dataset at a time (for example `13` or `dataset13`). This scopes both indexing and prompt evaluation to that dataset for faster iterations.
-
-The default benchmark YAML now supports `benchmark.dataset_suites`, which runs dataset folders sequentially (`dataset0` ... `dataset17`). For each dataset suite, prompts are auto-selected by dataset-relative expected paths and sampled by difficulty levels (`easy`, `medium`, `hard`) configured in YAML.
-
-For local-only image ingestion (no cloud APIs), use a local multimodal inference model (for example `qwen2.5vl:7b`) as your inference model. The ingestion pipeline uses the active inference client for image-to-text (`describe_image`) when available, so local VLM models can replace OCR/API vision for image chunking.
-If a non-vision local model is selected, ingestion logs a one-time warning and skips VLM image description.
-For benchmark runs specifically, use `--vlm` to set a dedicated image-to-text model for ingestion while keeping `--model` for answer generation.
-
 ## Configuration
 
 Create a `.env` file in the project root:
