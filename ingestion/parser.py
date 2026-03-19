@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO, Optional, Union
 
+from ingestion.code_syntax import validate_code_syntax
 from ingestion.models import (
     BlockMetadata,
     BlockType,
@@ -65,10 +66,14 @@ class InputDocument(ABC):
 
 # --- Router ---
 
-_CODE_EXTENSIONS = frozenset(
+# Code, markup-as-code, and machine-readable config (indexed as CODE modality).
+# .md / .rst stay plain TEXT (paragraphs), not code blocks.
+CODE_FILE_EXTENSIONS = frozenset(
     {
         ".py",
         ".js",
+        ".mjs",
+        ".cjs",
         ".ts",
         ".tsx",
         ".jsx",
@@ -95,8 +100,6 @@ _CODE_EXTENSIONS = frozenset(
         ".toml",
         ".ini",
         ".cfg",
-        ".md",
-        ".rst",
         ".html",
         ".css",
         ".scss",
@@ -104,7 +107,8 @@ _CODE_EXTENSIONS = frozenset(
         ".svelte",
     }
 )
-_IMAGE_EXTENSIONS = frozenset(
+
+IMAGE_FILE_EXTENSIONS = frozenset(
     {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
 )
 
@@ -134,9 +138,9 @@ def get_input_handler(
         ext = path.suffix.lower()
         if ext == ".pdf":
             return PDFInput()
-        if ext in _IMAGE_EXTENSIONS:
+        if ext in IMAGE_FILE_EXTENSIONS:
             return ImageInput()
-        if ext in _CODE_EXTENSIONS:
+        if ext in CODE_FILE_EXTENSIONS:
             return CodeInput()
     return TextInput()
 
@@ -197,6 +201,8 @@ class CodeInput(InputDocument):
                 else ""
             )
             suffix = ""
+        validate_code_syntax(suffix, content, src.path)
+
         block = ContentBlock(
             content=content,
             block_type=BlockType.CODE_BLOCK,

@@ -22,10 +22,42 @@ from ingestion.dedup import remove_near_duplicates_dicts
 from ingestion.embedding_adapter import embed_texts_batched
 from ingestion.models import BlockType, ContentBlock, FileMetadata, StructuredDocument
 from ingestion.orchestrator import parse_and_prepare
-from ingestion.parser import get_input_handler
+from ingestion.parser import (
+    CODE_FILE_EXTENSIONS,
+    IMAGE_FILE_EXTENSIONS,
+    get_input_handler,
+)
 from ingestion.preprocessing import preprocess
 
 logger = logging.getLogger(__name__)
+
+
+def _record_file_ingestion_failure(
+    db: Optional[Any],
+    discovered: DiscoveredFile,
+    _exc: BaseException,
+) -> None:
+    """Persist ``failed`` status so GET /files/ can show errors in the UI (red dot)."""
+    if db is None or not hasattr(db, "mark_file_failed"):
+        return
+    try:
+        resolved = str(Path(discovered.path).resolve())
+        file_hash = (
+            discovered.content_hash or hashlib.sha256(resolved.encode()).hexdigest()
+        )
+        db.mark_file_failed(
+            resolved,
+            file_hash,
+            discovered.size_bytes,
+            discovered.modified_timestamp,
+        )
+    except Exception:
+        logger.warning(
+            "Could not persist failed indexing status for %s",
+            discovered.path,
+            exc_info=True,
+        )
+
 
 # Lazy OCR provider: used when parsing images so text is extracted via Tesseract
 # Set to False when load failed (so we only warn once)
@@ -152,7 +184,7 @@ class PipelineConfig:
     min_content_word_ratio: float = 0.35
 
     # Crawler (when input is directory)
-    # Must stay in sync with parser._CODE_EXTENSIONS + _IMAGE_EXTENSIONS
+    # Must stay in sync with parser.CODE_FILE_EXTENSIONS + IMAGE_FILE_EXTENSIONS (+ .pdf, .txt, .md, .rst)
     supported_extensions: tuple[str, ...] = (
         # Documents
         ".pdf",
@@ -162,6 +194,8 @@ class PipelineConfig:
         # Code / config
         ".py",
         ".js",
+        ".mjs",
+        ".cjs",
         ".ts",
         ".tsx",
         ".jsx",
@@ -293,10 +327,12 @@ def _structural_chunk_and_filter(
 def _modality_for_ext(ext: str) -> str:
     if ext == ".pdf":
         return "pdf"
-    if ext in (".txt", ".md"):
+    if ext in (".txt", ".md", ".rst"):
         return "text"
-    if ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"):
+    if ext in IMAGE_FILE_EXTENSIONS:
         return "image"
+    if ext in CODE_FILE_EXTENSIONS:
+        return "code"
     return "text"
 
 
@@ -353,8 +389,15 @@ def _register_and_mark_failed(
             discovered.modified_timestamp,
         )
         if hasattr(db, "mark_file_failed"):
-            db.mark_file_failed(file_id)
+            # Prefer the path-based failed-status API (used by the UI).
+            db.mark_file_failed(
+                str(discovered.path),
+                file_hash,
+                discovered.size_bytes,
+                discovered.modified_timestamp,
+            )
         else:
+            # Backwards-compat fallback.
             db.mark_file_indexed(file_id)
     except Exception as exc:
         logger.warning(
@@ -618,6 +661,9 @@ def run(
             )
         )
 
+    # One file in this run → re-raise after logging so job workers don't mark the job completed.
+    single_file_run = len(file_iter) == 1
+
     all_chunks: List[dict[str, Any]] = []
     all_embeddings: List[List[float]] = []
     files_processed = 0
@@ -646,6 +692,9 @@ def run(
                 chunks_generated += ng
             except Exception as e:
                 logger.exception("Failed to process %s: %s", discovered.path, e)
+                _record_file_ingestion_failure(db, discovered, e)
+                if single_file_run:
+                    raise
                 _register_and_mark_failed(discovered, db, reason=str(e)[:200])
     else:
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -685,6 +734,9 @@ def run(
                     _register_and_mark_failed(discovered, db, reason="timeout")
                 except Exception as e:
                     logger.exception("Failed to process %s: %s", discovered.path, e)
+                    _record_file_ingestion_failure(db, discovered, e)
+                    if single_file_run:
+                        raise
                     _register_and_mark_failed(discovered, db, reason=str(e)[:200])
 
     if cfg.log_chunks_generated:

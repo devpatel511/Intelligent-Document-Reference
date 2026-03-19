@@ -537,24 +537,50 @@ class UnifiedDatabase:
         finally:
             conn.close()
 
+    def mark_file_failed(
+        self,
+        path: str,
+        file_hash: str,
+        size: int,
+        modified: float,
+    ) -> None:
+        """Set file row to ``failed`` so APIs (e.g. file tree) can surface ingestion errors.
+
+        Inserts the row if missing; otherwise updates metadata and status.
+        """
+        conn = self._get_conn()
+        try:
+            cur = conn.execute("SELECT id FROM files WHERE path = ?", (path,))
+            if cur.fetchone():
+                conn.execute(
+                    """
+                    UPDATE files
+                    SET status = 'failed',
+                        file_hash = ?,
+                        size_bytes = ?,
+                        last_modified_timestamp = ?
+                    WHERE path = ?
+                    """,
+                    (file_hash, size, modified, path),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO files (path, file_hash, size_bytes, last_modified_timestamp, status)
+                    VALUES (?, ?, ?, ?, 'failed')
+                    """,
+                    (path, file_hash, size, modified),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
     def mark_file_indexed(self, file_id: int) -> None:
         """Set file status to 'indexed' and update last_indexed_at timestamp."""
         conn = self._get_conn()
         try:
             conn.execute(
                 "UPDATE files SET status = 'indexed', last_indexed_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (file_id,),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    def mark_file_failed(self, file_id: int) -> None:
-        """Set file status to 'failed' so the UI does not show a false positive."""
-        conn = self._get_conn()
-        try:
-            conn.execute(
-                "UPDATE files SET status = 'failed' WHERE id = ?",
                 (file_id,),
             )
             conn.commit()
