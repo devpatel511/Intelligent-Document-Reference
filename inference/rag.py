@@ -15,8 +15,20 @@ class RAGProcessor:
         *,
         max_context_chars: int | None = None,
         max_chunk_chars: int | None = None,
+        chat_history_context: str | None = None,
     ) -> str:
-        """Build a retrieval-augmented prompt with source attributions."""
+        """Build a retrieval-augmented prompt with source attributions and chat history.
+
+        Args:
+            query: User's question.
+            chunks: Retrieved chunks.
+            max_context_chars: Maximum total context length.
+            max_chunk_chars: Maximum per-chunk length.
+            chat_history_context: Optional previous conversation context.
+
+        Returns:
+            Formatted prompt string.
+        """
         context_str = ""
         for c in chunks:
             chunk_text = c["text_content"]
@@ -40,26 +52,39 @@ class RAGProcessor:
                     break
             context_str += segment
 
-        return (
+        # Build prompt with optional chat history
+        prompt = (
             "You are a professional assistant. Use the context below to answer "
             "accurately and concisely.\n"
             "Return markdown only (headings, bullet lists, tables where helpful).\n"
             "Do not append source markers in the answer text.\n"
             "Do not include absolute or relative source file paths in the answer body.\n"
-            f"CONTEXT:\n{context_str}\n\n"
-            f"USER QUESTION: {query}\nANSWER:"
         )
+
+        if chat_history_context:
+            prompt += f"CONVERSATION HISTORY:\n{chat_history_context}\n\n"
+
+        prompt += f"CONTEXT:\n{context_str}\n\n" f"USER QUESTION: {query}\nANSWER:"
+
+        return prompt
 
     async def generate_response(
         self,
         query: str,
         chunks: List[Dict[str, Any]],
+        chat_history_context: str | None = None,
         **generate_kwargs,
     ) -> str:
         """Generate an LLM response from retrieved chunks.
 
-        Wraps the synchronous client.generate call in asyncio.to_thread
-        so the event loop is not blocked.
+        Args:
+            query: User's question.
+            chunks: Retrieved chunks.
+            chat_history_context: Optional previous conversation context.
+            **generate_kwargs: Additional kwargs for the client.generate call.
+
+        Returns:
+            Generated response text.
         """
         max_context_chars = generate_kwargs.pop("max_context_chars", None)
         max_chunk_chars = generate_kwargs.pop("max_chunk_chars", None)
@@ -68,5 +93,6 @@ class RAGProcessor:
             chunks,
             max_context_chars=max_context_chars,
             max_chunk_chars=max_chunk_chars,
+            chat_history_context=chat_history_context,
         )
         return await asyncio.to_thread(self.client.generate, prompt, **generate_kwargs)

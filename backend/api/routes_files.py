@@ -54,6 +54,7 @@ def _sync_watcher_to_inclusion(
     directories: List[str],
     files: List[str],
     scheduler: Optional[Any] = None,
+    ctx: Optional[Any] = None,
 ) -> None:
     """Sync monitor_config and watched_files to match inclusion.directories + inclusion.files.
 
@@ -64,6 +65,8 @@ def _sync_watcher_to_inclusion(
     When *scheduler* is provided (from AppContext), immediately enqueue indexing
     jobs for newly-added files so indexing starts without waiting for the
     background reconciliation loop.
+
+    When *ctx* is provided, sets ctx.dirty=True to indicate cache should be cleared.
     """
     db_path = PROJECT_ROOT / "file_registry.db"
     if not db_path.exists():
@@ -85,7 +88,12 @@ def _sync_watcher_to_inclusion(
             registry.remove_watch_path(existing)
 
     # Purge removed paths from local_search.db (files + chunks + vectors)
+    # and immediately clear cache when files are deleted
     if removed_paths:
+        if ctx and ctx.retrieval_cache:
+            ctx.retrieval_cache.clear()
+        if ctx:
+            ctx.dirty = True
         try:
             from db.unified import UnifiedDatabase
 
@@ -158,16 +166,20 @@ def _schedule_directory(
                 logger.warning("Failed to schedule %s: %s", fp, exc)
 
 
-def _sync_watcher_to_inclusion_directories(directories: List[str]) -> None:
+def _sync_watcher_to_inclusion_directories(
+    directories: List[str], ctx: Optional[Any] = None
+) -> None:
     """Backwards-compatible wrapper — syncs directories and reads files from YAML.
 
     Reads ``inclusion.files`` from the persisted config so that individual
     files are not accidentally deactivated when only directories are passed.
+
+    When *ctx* is provided, sets ctx.dirty=True to indicate cache should be cleared.
     """
     config = load_file_indexing_config()
     inclusion = config.get("inclusion", {})
     files = inclusion.get("files", []) or []
-    _sync_watcher_to_inclusion(directories, files)
+    _sync_watcher_to_inclusion(directories, files, ctx=ctx)
 
 
 def load_file_indexing_config() -> Dict[str, Any]:
@@ -483,12 +495,16 @@ async def update_file_indexing_config(
     save_file_indexing_config(config)
     # Sync monitor_config (and watched_files for individual files) with the saved inclusion list.
     # Pass the scheduler so new files are enqueued for indexing immediately.
+    # Pass ctx so dirty flag is set and cache is cleared when files are changed.
     inclusion = config.get("inclusion", {})
     _sync_watcher_to_inclusion(
         inclusion.get("directories", []),
         inclusion.get("files", []),
         scheduler=getattr(ctx, "scheduler", None),
+        ctx=ctx,
     )
+    # Also set dirty flag to ensure cache is cleared on next query
+    ctx.dirty = True
     return {"status": "ok", "config": config}
 
 

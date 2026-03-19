@@ -46,9 +46,11 @@ def _strip_inline_source_markers(text: str) -> str:
 class Responder:
     """Orchestrates retrieval and generation for a user query."""
 
-    def __init__(self, db, embedding_client, inference_client):
+    def __init__(self, db, embedding_client, inference_client, cache=None):
         self.db = db
-        self.retriever = Retriever(db=db, embedding_client=embedding_client)
+        self.retriever = Retriever(
+            db=db, embedding_client=embedding_client, cache=cache
+        )
         self.rag = RAGProcessor(inference_client=inference_client)
 
     async def respond(
@@ -62,8 +64,24 @@ class Responder:
         temperature: Optional[float] = None,
         context_size: Optional[int] = None,
         inference_backend: Optional[str] = None,
+        chat_history_context: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Run the full retrieve-then-generate pipeline."""
+        """Run the full retrieve-then-generate pipeline.
+
+        Args:
+            query: User's question.
+            top_k: Number of chunks to retrieve.
+            folder_id: Optional folder filter.
+            selected_files: Optional file paths to search within.
+            model: Optional model override.
+            temperature: Optional temperature override.
+            context_size: Optional context size for local models.
+            inference_backend: Optional inference backend override.
+            chat_history_context: Optional chat history to include in prompt.
+
+        Returns:
+            Dict with answer, citations, and chunks.
+        """
         file_ids: Optional[List[int]] = None
         if selected_files is not None:
             file_ids = self.db.get_file_ids_for_paths(selected_files)
@@ -104,7 +122,9 @@ class Responder:
             )
             generate_kwargs.setdefault("max_chunk_chars", 1800)
 
-        answer = await self.rag.generate_response(query, chunks, **generate_kwargs)
+        answer = await self.rag.generate_response(
+            query, chunks, chat_history_context=chat_history_context, **generate_kwargs
+        )
         answer = _strip_inline_source_markers(answer)
         citations = format_citations(chunks, max_items=3, query=query)
 
@@ -123,5 +143,6 @@ async def respond(query: str, ctx=None, **kwargs) -> Dict[str, Any]:
         db=ctx.db,
         embedding_client=ctx.embedding_client,
         inference_client=ctx.inference_client,
+        cache=ctx.retrieval_cache if ctx else None,
     )
     return await responder.respond(query, **kwargs)

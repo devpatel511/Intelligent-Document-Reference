@@ -71,9 +71,12 @@ async def status(ctx: AppContext = Depends(get_context)):
 async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
     """Process a chat query through the RAG pipeline.
 
-    1. Embed the query using the configured embedding client.
-    2. Retrieve the top-k most relevant chunks from the vector store.
-    3. Feed the chunks + query into the LLM to produce a cited answer.
+    1. Check if session is dirty (files added/deleted); clear cache if needed.
+    2. Embed the query using the configured embedding client.
+    3. Retrieve the top-k most relevant chunks from the vector store.
+    4. Include chat history context in the LLM prompt.
+    5. Feed the chunks + query + history into the LLM to produce a cited answer.
+    6. Log the turn to chat history.
     """
     if not ctx.db:
         raise HTTPException(status_code=503, detail="Database not initialised")
@@ -81,6 +84,13 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
         raise HTTPException(status_code=503, detail="Embedding client not available")
     if not ctx.inference_client:
         raise HTTPException(status_code=503, detail="Inference client not available")
+
+    # Check dirty flag and clear cache if files were added/deleted
+    if ctx.dirty:
+        if ctx.retrieval_cache:
+            ctx.retrieval_cache.clear()
+        ctx.dirty = False
+        logger.info("Session marked as dirty; retrieval cache cleared")
 
     try:
         runtime_prefs = resolve_runtime_preferences(ctx)
@@ -96,10 +106,16 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
             model_override=request.model,
         )
 
+        # Build chat history context for LLM
+        chat_history_context = None
+        if ctx.chat_history:
+            chat_history_context = ctx.chat_history.get_context()
+
         responder = Responder(
             db=ctx.db,
             embedding_client=ctx.embedding_client,
             inference_client=inference_client,
+            cache=ctx.retrieval_cache,
         )
         start_time = time.monotonic()
         result = await responder.respond(
@@ -110,8 +126,22 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
             temperature=request.temperature,
             context_size=request.context_size,
             inference_backend=effective_backend,
+            chat_history_context=chat_history_context,
         )
         processing_time_ms = round((time.monotonic() - start_time) * 1000)
+
+        # Log this turn to chat history for future queries
+        if ctx.chat_history:
+            ctx.chat_history.add_turn(
+                user_query=request.query,
+                assistant_response=result["answer"],
+                metadata={
+                    "model": request.model,
+                    "inference_backend": effective_backend,
+                    "top_k": request.top_k or 5,
+                },
+            )
+
     except Exception:
         logger.exception("RAG pipeline error")
         detail = "Error processing query"
