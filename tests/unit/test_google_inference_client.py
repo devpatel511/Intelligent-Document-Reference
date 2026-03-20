@@ -41,6 +41,38 @@ class _FakeClient:
         self.models = _FakeModels()
 
 
+class _FakeUploadedFile:
+    def __init__(self, *, name: str, uri: str, mime_type: str, state_name: str = "ACTIVE"):
+        self.name = name
+        self.uri = uri
+        self.mime_type = mime_type
+        self.state = type("_State", (), {"name": state_name})()
+
+
+class _FakeFilesApi:
+    def __init__(self):
+        self.upload_calls = []
+        self.delete_calls = []
+
+    def upload(self, *, file: str, config):
+        self.upload_calls.append((file, config))
+        return _FakeUploadedFile(
+            name="files/audio-1",
+            uri="gs://fake/audio-1",
+            mime_type=config.get("mime_type", "audio/mpeg"),
+            state_name="ACTIVE",
+        )
+
+    def delete(self, *, name: str):
+        self.delete_calls.append(name)
+
+
+class _FakeClientWithFiles:
+    def __init__(self):
+        self.models = _FakeModels()
+        self.files = _FakeFilesApi()
+
+
 def test_transcribe_audio_retries_and_falls_back(tmp_path: Path, monkeypatch) -> None:
     mp3_file = tmp_path / "clip.mp3"
     mp3_file.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00")
@@ -80,3 +112,27 @@ def test_transcribe_audio_uses_wav_mime_type(tmp_path: Path, monkeypatch) -> Non
 
     assert text == "transcribed text"
     assert client.client.models.last_contents[1]["mime"] == "audio/wav"
+
+
+def test_transcribe_large_audio_uses_files_api(tmp_path: Path, monkeypatch) -> None:
+    wav_file = tmp_path / "large.wav"
+    wav_file.write_bytes(b"RIFF\x00\x00\x00\x00WAVE" + (b"\x00" * (2 * 1024 * 1024)))
+
+    monkeypatch.setattr(google_client_module, "types", _DummyTypes)
+
+    client = GoogleInferenceClient.__new__(GoogleInferenceClient)
+    client.client = _FakeClientWithFiles()
+    client.model = "gemini-fallback"
+
+    text = client.transcribe_audio(
+        str(wav_file),
+        inline_audio_max_mb=1,
+        retries_per_model=1,
+    )
+
+    assert text == "transcribed text"
+    assert len(client.client.files.upload_calls) == 1
+    assert client.client.files.upload_calls[0][1]["mime_type"] == "audio/wav"
+    assert client.client.files.delete_calls == ["files/audio-1"]
+    # In large-file path, second content item is file reference, not inline bytes payload.
+    assert client.client.models.last_contents[1].uri == "gs://fake/audio-1"
