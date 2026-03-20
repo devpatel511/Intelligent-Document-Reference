@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from dotenv import load_dotenv
 
@@ -28,6 +28,7 @@ class GoogleEmbeddingClient(EmbeddingClient):
         self,
         api_key: Optional[str] = None,
         model: str = "models/gemini-embedding-001",
+        output_dimensionality: Optional[int] = None,
     ):
         if genai is None:
             raise ImportError(
@@ -42,6 +43,62 @@ class GoogleEmbeddingClient(EmbeddingClient):
             )
         self.client = genai.Client(api_key=self.api_key)
         self.model = model
+        self.output_dimensionality = output_dimensionality
+
+    def _build_embed_kwargs(self, batch: List[str]) -> list[dict[str, Any]]:
+        """Build compatible embed_content kwargs for different SDK versions."""
+        base: dict[str, Any] = {
+            "model": self.model,
+            "contents": batch,
+        }
+        if self.output_dimensionality is None:
+            return [base]
+
+        dim = int(self.output_dimensionality)
+
+        # Preferred path for modern SDKs.
+        if types is not None and hasattr(types, "EmbedContentConfig"):
+            try:
+                typed_cfg = types.EmbedContentConfig(output_dimensionality=dim)
+                return [{**base, "config": typed_cfg}]
+            except Exception:
+                # Fall through to dict-based variants for compatibility.
+                pass
+
+        # Compatibility variants observed across SDK revisions.
+        return [
+            {**base, "config": {"output_dimensionality": dim}},
+            {**base, "config": {"outputDimensionality": dim}},
+        ]
+
+    def _normalize_dimension(self, vectors: List[List[float]]) -> List[List[float]]:
+        """Ensure returned embeddings match requested dimensionality when provided."""
+        if not vectors or self.output_dimensionality is None:
+            return vectors
+
+        target = int(self.output_dimensionality)
+        out: List[List[float]] = []
+        for idx, vec in enumerate(vectors):
+            n = len(vec)
+            if n == target:
+                out.append(vec)
+                continue
+            if n > target:
+                # Gemini embedding models are trained with MRL prefixes, so
+                # truncating to a smaller requested dimension is valid.
+                logger.debug(
+                    "Truncating Gemini embedding vector from %d to %d at index %d",
+                    n,
+                    target,
+                    idx,
+                )
+                out.append(vec[:target])
+                continue
+            raise ValueError(
+                "Gemini returned fewer embedding dimensions than requested: "
+                f"requested={target}, received={n}"
+            )
+        return out
 
     def embed_text(self, texts: List[str]) -> List[List[float]]:
         """Embed a list of texts using the Gemini embedding model.
@@ -55,17 +112,31 @@ class GoogleEmbeddingClient(EmbeddingClient):
         if not texts:
             return []
 
-        # Google API allows at most 100 requests per batch
+        # Google API allows at most 100 requests per batch.
         max_batch_size = 100
         all_embeddings: List[List[float]] = []
 
         for i in range(0, len(texts), max_batch_size):
             batch = texts[i : i + max_batch_size]
-            result = self.client.models.embed_content(
-                model=self.model,
-                contents=batch,
-            )
-            all_embeddings.extend(e.values for e in result.embeddings)
+            payloads = self._build_embed_kwargs(batch)
+
+            last_error: Exception | None = None
+            result = None
+            for kwargs in payloads:
+                try:
+                    result = self.client.models.embed_content(**kwargs)
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    continue
+
+            if result is None:
+                raise RuntimeError(
+                    "Gemini embed_content failed for all config payload variants"
+                ) from last_error
+
+            batch_embeddings = [e.values for e in result.embeddings]
+            all_embeddings.extend(self._normalize_dimension(batch_embeddings))
 
         return all_embeddings
 
@@ -164,8 +235,9 @@ class GoogleInferenceClient(InferenceClient):
         Returns:
             The generated text.
         """
+        model = kwargs.pop("model", self.model)
         response = self.client.models.generate_content(
-            model=self.model,
+            model=model,
             contents=prompt,
         )
         return response.text

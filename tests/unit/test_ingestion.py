@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from ingestion import (
     AudioInput,
     CodeInput,
@@ -10,6 +12,7 @@ from ingestion import (
     get_input_handler,
     parse_and_prepare,
 )
+from ingestion.code_syntax import CodeSyntaxError
 from ingestion.models import (
     BlockType,
     ContentBlock,
@@ -52,6 +55,33 @@ def test_get_input_handler_selects_by_extension() -> None:
     assert type(get_input_handler("x.mp3")).__name__ == "AudioInput"
     assert type(get_input_handler("x.py")).__name__ == "CodeInput"
     assert type(get_input_handler("x.txt")).__name__ == "TextInput"
+    assert type(get_input_handler("x.md")).__name__ == "TextInput"
+    assert type(get_input_handler("x.rst")).__name__ == "TextInput"
+
+
+def test_code_input_rejects_invalid_python(tmp_path: Path) -> None:
+    """CodeInput raises CodeSyntaxError for invalid Python."""
+    f = tmp_path / "bad.py"
+    f.write_text("def broken(\n", encoding="utf-8")
+    with pytest.raises(CodeSyntaxError, match="Python syntax error"):
+        parse_and_prepare(CodeInput(), str(f), config=IngestionConfig())
+
+
+def test_code_input_rejects_invalid_json(tmp_path: Path) -> None:
+    """CodeInput raises CodeSyntaxError for invalid JSON."""
+    f = tmp_path / "bad.json"
+    f.write_text("{ not json ", encoding="utf-8")
+    with pytest.raises(CodeSyntaxError, match="JSON parse error"):
+        parse_and_prepare(CodeInput(), str(f), config=IngestionConfig())
+
+
+def test_code_input_rejects_invalid_css(tmp_path: Path) -> None:
+    """CodeInput raises CodeSyntaxError for invalid CSS."""
+    f = tmp_path / "bad.css"
+    # tinycss2 reports an error token for this malformed input
+    f.write_text("###", encoding="utf-8")
+    with pytest.raises(CodeSyntaxError, match="CSS parse error"):
+        parse_and_prepare(CodeInput(), str(f), config=IngestionConfig())
 
 
 def test_audio_input_transcribes_mp3(tmp_path: Path) -> None:
