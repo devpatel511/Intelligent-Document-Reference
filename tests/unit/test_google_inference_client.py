@@ -26,9 +26,11 @@ class _Response:
 class _FakeModels:
     def __init__(self):
         self.calls = []
+        self.last_contents = None
 
     def generate_content(self, *, model: str, contents):
         self.calls.append(model)
+        self.last_contents = contents
         if model == "gemini-primary":
             raise Exception("503 UNAVAILABLE: high demand")
         return _Response("transcribed text")
@@ -62,3 +64,19 @@ def test_transcribe_audio_retries_and_falls_back(tmp_path: Path, monkeypatch) ->
         "gemini-primary",
         "gemini-fallback",
     ]
+
+
+def test_transcribe_audio_uses_wav_mime_type(tmp_path: Path, monkeypatch) -> None:
+    wav_file = tmp_path / "clip.wav"
+    wav_file.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+
+    monkeypatch.setattr(google_client_module, "types", _DummyTypes)
+
+    client = GoogleInferenceClient.__new__(GoogleInferenceClient)
+    client.client = _FakeClient()
+    client.model = "gemini-fallback"
+
+    text = client.transcribe_audio(str(wav_file), retries_per_model=1)
+
+    assert text == "transcribed text"
+    assert client.client.models.last_contents[1]["mime"] == "audio/wav"

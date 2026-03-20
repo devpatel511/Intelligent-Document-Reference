@@ -1,6 +1,7 @@
 """Google Gemini client for embeddings and inference via AI Studio."""
 
 import logging
+import mimetypes
 import os
 import time
 from pathlib import Path
@@ -12,6 +13,20 @@ from model_clients.base import EmbeddingClient, InferenceClient
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+_AUDIO_MIME_BY_EXTENSION: dict[str, str] = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".opus": "audio/opus",
+    ".webm": "audio/webm",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
+}
 
 try:
     from google import genai
@@ -326,17 +341,38 @@ class GoogleInferenceClient(InferenceClient):
 
         return await asyncio.to_thread(self.describe_image, image, prompt)
 
+    @staticmethod
+    def _resolve_audio_mime_type(
+        audio_path: Optional[Path],
+        explicit_mime_type: Optional[str] = None,
+    ) -> str:
+        if explicit_mime_type:
+            return explicit_mime_type
+
+        if audio_path is not None:
+            ext = audio_path.suffix.lower()
+            if ext in _AUDIO_MIME_BY_EXTENSION:
+                return _AUDIO_MIME_BY_EXTENSION[ext]
+            guessed, _encoding = mimetypes.guess_type(str(audio_path))
+            if guessed and guessed.startswith("audio/"):
+                return guessed
+
+        # Keep historical default for byte streams/unknown file extensions.
+        return "audio/mpeg"
+
     def transcribe_audio(
         self,
         audio: Union[str, Path, bytes],
         prompt: Optional[str] = None,
+        mime_type: Optional[str] = None,
         fallback_models: Optional[List[str]] = None,
         retries_per_model: int = 3,
     ) -> str:
-        """Transcribe audio (e.g. MP3) with Gemini multimodal input."""
+        """Transcribe audio with Gemini multimodal input."""
         if types is None:
             raise ImportError("google-genai types required for transcribe_audio")
 
+        audio_path: Optional[Path] = None
         if isinstance(audio, (str, Path)):
             audio_path = Path(audio)
             if not audio_path.exists():
@@ -345,13 +381,18 @@ class GoogleInferenceClient(InferenceClient):
         else:
             data = audio
 
+        resolved_mime_type = self._resolve_audio_mime_type(
+            audio_path=audio_path,
+            explicit_mime_type=mime_type,
+        )
+
         text_prompt = prompt or (
             "Transcribe this audio accurately. Return plain text only. "
             "If speakers are distinguishable, prefix lines with speaker labels."
         )
         contents = [
             types.Part.from_text(text=text_prompt),
-            types.Part.from_bytes(data=data, mime_type="audio/mpeg"),
+            types.Part.from_bytes(data=data, mime_type=resolved_mime_type),
         ]
         models_to_try: list[str] = [self.model]
         if fallback_models is None:

@@ -53,6 +53,7 @@ def test_get_input_handler_selects_by_extension() -> None:
     assert type(get_input_handler("x.pdf")).__name__ == "PDFInput"
     assert type(get_input_handler("x.png")).__name__ == "ImageInput"
     assert type(get_input_handler("x.mp3")).__name__ == "AudioInput"
+    assert type(get_input_handler("x.wav")).__name__ == "AudioInput"
     assert type(get_input_handler("x.py")).__name__ == "CodeInput"
     assert type(get_input_handler("x.txt")).__name__ == "TextInput"
     assert type(get_input_handler("x.md")).__name__ == "TextInput"

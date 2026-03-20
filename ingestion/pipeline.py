@@ -23,6 +23,7 @@ from ingestion.embedding_adapter import embed_texts_batched
 from ingestion.models import BlockType, ContentBlock, FileMetadata, StructuredDocument
 from ingestion.orchestrator import parse_and_prepare
 from ingestion.parser import (
+    AUDIO_FILE_EXTENSIONS,
     CODE_FILE_EXTENSIONS,
     IMAGE_FILE_EXTENSIONS,
     get_input_handler,
@@ -184,7 +185,7 @@ class PipelineConfig:
     min_content_word_ratio: float = 0.35
 
     # Crawler (when input is directory)
-    # Must stay in sync with parser.CODE_FILE_EXTENSIONS + IMAGE_FILE_EXTENSIONS + _AUDIO_EXTENSIONS (+ .pdf, .txt, .md, .rst)
+    # Must stay in sync with parser.CODE_FILE_EXTENSIONS + IMAGE_FILE_EXTENSIONS + AUDIO_FILE_EXTENSIONS (+ .pdf, .txt, .md, .rst)
     supported_extensions: tuple[str, ...] = (
         # Documents
         ".pdf",
@@ -238,6 +239,16 @@ class PipelineConfig:
         ".webp",
         # Audio
         ".mp3",
+        ".wav",
+        ".m4a",
+        ".aac",
+        ".flac",
+        ".ogg",
+        ".oga",
+        ".opus",
+        ".webm",
+        ".aiff",
+        ".aif",
     )
     exclude_patterns: tuple[str, ...] = (
         "**/node_modules/**",
@@ -333,7 +344,7 @@ def _modality_for_ext(ext: str) -> str:
         return "text"
     if ext in IMAGE_FILE_EXTENSIONS:
         return "image"
-    if ext == ".mp3":
+    if ext in AUDIO_FILE_EXTENSIONS:
         return "audio"
     if ext in CODE_FILE_EXTENSIONS:
         return "code"

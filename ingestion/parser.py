@@ -111,7 +111,21 @@ CODE_FILE_EXTENSIONS = frozenset(
 IMAGE_FILE_EXTENSIONS = frozenset(
     {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
 )
-_AUDIO_EXTENSIONS = frozenset({".mp3"})
+AUDIO_FILE_EXTENSIONS = frozenset(
+    {
+        ".mp3",
+        ".wav",
+        ".m4a",
+        ".aac",
+        ".flac",
+        ".ogg",
+        ".oga",
+        ".opus",
+        ".webm",
+        ".aiff",
+        ".aif",
+    }
+)
 
 
 def get_input_handler(
@@ -143,9 +157,9 @@ def get_input_handler(
             return PDFInput()
         if ext in IMAGE_FILE_EXTENSIONS:
             return ImageInput()
-        if ext in _AUDIO_EXTENSIONS:
+        if ext in AUDIO_FILE_EXTENSIONS:
             return AudioInput()
-        if ext in _CODE_EXTENSIONS:
+        if ext in CODE_FILE_EXTENSIONS:
             return CodeInput()
     return TextInput()
 
