@@ -42,7 +42,9 @@ class _FakeClient:
 
 
 class _FakeUploadedFile:
-    def __init__(self, *, name: str, uri: str, mime_type: str, state_name: str = "ACTIVE"):
+    def __init__(
+        self, *, name: str, uri: str, mime_type: str, state_name: str = "ACTIVE"
+    ):
         self.name = name
         self.uri = uri
         self.mime_type = mime_type
