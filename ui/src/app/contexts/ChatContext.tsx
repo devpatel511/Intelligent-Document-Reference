@@ -36,7 +36,7 @@ export interface FileNode {
   type: 'file' | 'folder';
   path: string;
   selected?: boolean;
-  status?: 'indexed' | 'pending' | 'unsupported' | 'failed' | 'outdated';
+  status?: 'indexed' | 'pending' | 'indexing' | 'unsupported' | 'failed' | 'outdated';
   children?: FileNode[];
 }
 

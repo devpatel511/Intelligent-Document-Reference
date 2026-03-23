@@ -57,7 +57,7 @@ uv run app.py --help
 ## Contributing
 
 ```bash
-uv sync --group dev				# install test deps
+uv sync --group dev					# install test deps
 uv run scripts/cspyformatter.py  	# run formatting
 uv run pytest						# run all tests
 ```

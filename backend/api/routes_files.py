@@ -240,12 +240,14 @@ def build_file_tree(
     exclusion_patterns: Optional[List[str]] = None,
     file_statuses: Optional[Dict[str, str]] = None,
     supported_extensions: Optional[Set[str]] = None,
+    reindex_in_progress: bool = False,
 ) -> list:
     """Recursively build file tree structure with absolute paths, filtering exclusions.
 
     Each file node receives a ``status`` field:
     - ``indexed``  – file has been successfully embedded and is searchable.
-    - ``pending``  – file is queued / being indexed.
+    - ``pending``  – file is configured but not currently indexed.
+    - ``indexing`` – file is actively being processed by a running job.
     - ``unsupported`` – file extension is not handled by the ingestion pipeline.
     """
     full_path = Path(path)
@@ -298,9 +300,13 @@ def build_file_tree(
                 if sup_exts and ext not in sup_exts:
                     node["status"] = "unsupported"
                 elif abs_path in statuses:
-                    node["status"] = statuses[abs_path]
+                    db_status = statuses[abs_path]
+                    if reindex_in_progress and db_status == "pending":
+                        node["status"] = "outdated"
+                    else:
+                        node["status"] = db_status
                 else:
-                    node["status"] = "pending"
+                    node["status"] = "outdated" if reindex_in_progress else "pending"
 
             nodes.append(node)
     except PermissionError:
@@ -310,7 +316,7 @@ def build_file_tree(
 
 
 @router.get("/")
-async def list_files():
+async def list_files(ctx: AppContext = Depends(get_context)):
     """List available files in a tree structure built from inclusion directories and files."""
     config = load_file_indexing_config()
     inclusion = config.get("inclusion", {})
@@ -345,11 +351,26 @@ async def list_files():
     except Exception:
         pass
 
+    # Overlay queued/running queue jobs so UI can distinguish
+    # "actively indexing" from "not indexed yet".
+    try:
+        if getattr(ctx, "job_queue", None) is not None:
+            active_jobs = [
+                *ctx.job_queue.list_jobs(status="queued"),
+                *ctx.job_queue.list_jobs(status="running"),
+            ]
+            for job in active_jobs:
+                active_path = os.path.abspath(job.file_path).rstrip(os.sep)
+                file_statuses[active_path] = "indexing"
+    except Exception:
+        pass
+
     from ingestion.pipeline import PipelineConfig
 
     supported_extensions: Set[str] = set(PipelineConfig().supported_extensions)
 
     all_nodes = []
+    reindex_active = bool(getattr(ctx, "reindex_in_progress", False))
 
     # Directory trees
     for dir_path in inclusion_dirs:
@@ -363,6 +384,7 @@ async def list_files():
             exclusion_patterns,
             file_statuses,
             supported_extensions,
+            reindex_active,
         )
         if tree:
             resolved = str(Path(dir_path).resolve())
@@ -393,9 +415,12 @@ async def list_files():
         if supported_extensions and ext not in supported_extensions:
             status = "unsupported"
         elif abs_path in file_statuses:
-            status = file_statuses[abs_path]
+            db_status = file_statuses[abs_path]
+            status = (
+                "outdated" if reindex_active and db_status == "pending" else db_status
+            )
         else:
-            status = "pending"
+            status = "outdated" if reindex_active else "pending"
 
         all_nodes.append(
             {

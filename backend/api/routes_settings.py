@@ -427,6 +427,7 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
     from core.runtime_config import resolve_runtime_preferences as _resolve
 
     _apply(ctx)
+    ctx.reindex_in_progress = True
 
     prefs = _resolve(ctx)
     eb = prefs.get("embedding_backend", "gemini")
@@ -514,16 +515,19 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
                 errs.append(f"{p}: {exc}")
         return indexed, errs
 
-    indexed_count, errors = await asyncio.to_thread(_run_all_indexing)
+    try:
+        indexed_count, errors = await asyncio.to_thread(_run_all_indexing)
 
-    return {
-        "status": "ok",
-        "message": f"Reindex completed for {indexed_count} paths (dim={target_dim})",
-        "embedding_backend": eb,
-        "embedding_model": em,
-        "dimension": target_dim,
-        "errors": errors[:5] if errors else [],
-    }
+        return {
+            "status": "ok",
+            "message": f"Reindex completed for {indexed_count} paths (dim={target_dim})",
+            "embedding_backend": eb,
+            "embedding_model": em,
+            "dimension": target_dim,
+            "errors": errors[:5] if errors else [],
+        }
+    finally:
+        ctx.reindex_in_progress = False
 
 
 @router.post("/clear-indexes")

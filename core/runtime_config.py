@@ -156,9 +156,10 @@ def apply_runtime_clients(ctx) -> Dict[str, Any]:
 
     try:
         ctx.embedding_client = build_runtime_client(ctx, kind="embedding", prefs=prefs)
-    except Exception:
-        logger.exception(
-            "Failed to initialize embedding client with persisted settings"
+    except Exception as exc:
+        logger.debug(
+            "Embedding client init failed with persisted settings; falling back to local defaults (%s)",
+            exc,
         )
         fallback = dict(prefs)
         fallback["embedding_backend"] = "local"
@@ -171,9 +172,10 @@ def apply_runtime_clients(ctx) -> Dict[str, Any]:
 
     try:
         ctx.inference_client = build_runtime_client(ctx, kind="inference", prefs=prefs)
-    except Exception:
-        logger.exception(
-            "Failed to initialize inference client with persisted settings"
+    except Exception as exc:
+        logger.debug(
+            "Inference client init failed with persisted settings; falling back to local defaults (%s)",
+            exc,
         )
         fallback = dict(prefs)
         fallback["inference_backend"] = "local"
