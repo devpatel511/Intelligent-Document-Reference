@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useChatContext, FileNode } from '@/app/contexts/ChatContext';
 import { Checkbox } from '@/app/components/ui/checkbox';
-import { ChevronLeft, ChevronRight, File, Folder, Ban, CheckCircle2, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, File, Folder, Ban, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
 interface FileNavigatorProps {
@@ -26,11 +26,11 @@ function getFolderStatus(node: FileNode): NodeStatus | undefined {
   // If every leaf is indexed, show the green check.
   if (statuses.every((s) => s === 'indexed')) return 'indexed';
 
+  if (statuses.some((s) => s === 'failed')) return 'failed';
+  if (statuses.some((s) => s === 'indexing')) return 'indexing';
+  if (statuses.some((s) => s === 'outdated')) return 'outdated';
   // "Not indexed yet" corresponds to backend "pending".
   if (statuses.some((s) => s === 'pending')) return 'pending';
-
-  if (statuses.some((s) => s === 'failed')) return 'failed';
-  if (statuses.some((s) => s === 'outdated')) return 'outdated';
 
   // Mixed/unknown: pick the first stable priority.
   return statuses[0];
@@ -47,6 +47,8 @@ function StatusIndicator({
     title ??
     (status === 'indexed'
       ? 'Indexed & available'
+      : status === 'indexing'
+        ? 'Indexing in progress'
       : status === 'pending'
         ? 'Not indexed yet'
         : status === 'unsupported'
@@ -57,8 +59,26 @@ function StatusIndicator({
               ? 'Re-indexing…'
               : '');
 
-  // Red dot for "not indexed yet" and for errors (corrupted PDF, code errors, etc.)
-  if (status === 'pending' || status === 'failed') {
+  // Orange spinner while indexing is in progress.
+  if (status === 'indexing') {
+    return (
+      <span title={effectiveTitle} className="shrink-0 flex items-center">
+        <span className="h-2.5 w-2.5 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
+      </span>
+    );
+  }
+
+  // Red dot for files that are not indexed yet.
+  if (status === 'pending') {
+    return (
+      <span title={effectiveTitle} className="shrink-0 flex items-center">
+        <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+      </span>
+    );
+  }
+
+  // Red dot only for indexing errors.
+  if (status === 'failed') {
     return (
       <span title={effectiveTitle} className="shrink-0 flex items-center">
         <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
@@ -77,7 +97,7 @@ function StatusIndicator({
   if (status === 'outdated') {
     return (
       <span title={effectiveTitle} className="shrink-0 flex items-center">
-        <RefreshCw className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+        <span className="h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse" />
       </span>
     );
   }
@@ -272,6 +292,14 @@ export function FileNavigator({ type }: FileNavigatorProps) {
                         />
                       );
                     }
+                    if (folderStatus === 'indexing') {
+                      return (
+                        <StatusIndicator
+                          status="indexing"
+                          title="Contains files currently indexing"
+                        />
+                      );
+                    }
                     if (folderStatus === 'failed') {
                       return (
                         <StatusIndicator
@@ -326,6 +354,9 @@ export function FileNavigator({ type }: FileNavigatorProps) {
                     <StatusIndicator
                       status={node.status as NodeStatus}
                       title={
+                        node.status === 'indexing'
+                          ? 'Indexing in progress'
+                          :
                         node.status === 'pending'
                           ? 'Not indexed yet'
                           : undefined

@@ -7,6 +7,16 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Switch } from '@/app/components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/app/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/app/components/ui/radio-group';
 import { Slider } from '@/app/components/ui/slider';
@@ -107,6 +117,8 @@ export function SettingsPage() {
     pickFiles,
     reindexRequired,
     outdatedFileCount,
+    loadFiles,
+    refreshPipelineStatus,
   } = useChatContext();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -118,6 +130,7 @@ export function SettingsPage() {
   const [isRefreshingEmbeddingDims, setIsRefreshingEmbeddingDims] = useState(false);
   const [isReindexing, setIsReindexing] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
   const currentSnapshot = useMemo(
@@ -332,6 +345,11 @@ export function SettingsPage() {
 
   const handleReindex = async () => {
     setIsReindexing(true);
+    const pollId = window.setInterval(() => {
+      loadFiles().catch((error) => {
+        console.error('Failed to refresh file statuses during reindex:', error);
+      });
+    }, 1000);
     try {
       const res = await fetch('/settings/reindex', { method: 'POST' });
       const data = await res.json();
@@ -343,14 +361,15 @@ export function SettingsPage() {
     } catch (error) {
       toast.error(`Reindex failed: ${error instanceof Error ? error.message : error}`);
     } finally {
+      window.clearInterval(pollId);
+      await loadFiles();
+      await refreshPipelineStatus();
       setIsReindexing(false);
     }
   };
 
   const handleClearIndexes = async () => {
-    if (!window.confirm('This will remove all indexed chunks and vectors. Are you sure?')) {
-      return;
-    }
+    setIsClearDialogOpen(false);
     setIsClearing(true);
     try {
       const res = await fetch('/settings/clear-indexes', { method: 'POST' });
@@ -400,8 +419,8 @@ export function SettingsPage() {
             <p className="text-sm font-medium">Reindex required after embedding configuration change</p>
             <p className="text-xs mt-1">
               {outdatedFileCount > 0
-                ? `${outdatedFileCount} file${outdatedFileCount === 1 ? '' : 's'} marked outdated. Run indexing to rebuild vectors.`
-                : 'Some vectors are outdated. Run indexing to rebuild vectors.'}
+                ? `${outdatedFileCount} file${outdatedFileCount === 1 ? '' : 's'} marked outdated. Run reindexing to rebuild vectors.`
+                : 'Some vectors are outdated. Run reindexing to rebuild vectors.'}
             </p>
           </div>
         )}
@@ -868,12 +887,6 @@ export function SettingsPage() {
                   )}
                 </div>
 
-                {hasUnsavedIndexingChanges && (
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
-                    You have unsaved indexing changes. Save Configuration before leaving this page.
-                  </p>
-                )}
-
                 <div className="flex items-center justify-between pt-4 border-t">
                   <p className="text-sm text-muted-foreground">
                     Included files will be used for retrieval-augmented generation, while excluded files will be ignored.
@@ -939,7 +952,7 @@ export function SettingsPage() {
                   </div>
                   <Button
                     variant="destructive"
-                    onClick={handleClearIndexes}
+                    onClick={() => setIsClearDialogOpen(true)}
                     disabled={isClearing}
                     className="cursor-pointer"
                   >
@@ -949,6 +962,30 @@ export function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <AlertDialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear all indexes?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This removes all indexed chunks, vectors, and file records from the database.
+                    Your inclusion/exclusion configuration is preserved.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="cursor-pointer" disabled={isClearing}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleClearIndexes}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90 cursor-pointer"
+                    disabled={isClearing}
+                  >
+                    {isClearing ? 'Clearing...' : 'Yes, clear indexes'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </TabsContent>
 
           {/* Advanced Settings */}

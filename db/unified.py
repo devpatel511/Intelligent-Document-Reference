@@ -384,6 +384,12 @@ class UnifiedDatabase:
                 JOIN chunks c ON v.rowid = c.id
                 JOIN files f ON c.file_id = f.id
                 WHERE v.embedding MATCH ? AND k = ?
+                  AND f.status = 'indexed'
+                  AND c.version_id = (
+                      SELECT MAX(fv.id)
+                      FROM file_versions fv
+                      WHERE fv.file_id = c.file_id
+                  )
             """
             params: list = [query_blob, query_blob, limit]
             if file_ids:
@@ -455,7 +461,13 @@ class UnifiedDatabase:
                         ({score_expr}) AS lexical_score
                     FROM chunks c
                     JOIN files f ON c.file_id = f.id
-                    WHERE 1=1
+                                        WHERE 1=1
+                                            AND f.status = 'indexed'
+                                            AND c.version_id = (
+                                                    SELECT MAX(fv.id)
+                                                    FROM file_versions fv
+                                                    WHERE fv.file_id = c.file_id
+                                            )
             """
 
             if file_ids:

@@ -18,3 +18,4 @@ class AppContext:
     scheduler: Optional[Any] = None
     watcher: Optional[Any] = None
     settings_store: Optional[Any] = None
+    reindex_in_progress: bool = False
