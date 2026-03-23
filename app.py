@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 FILE_INDEXING_DEFAULT_CONTENT = """# File indexing configuration
 # This file is managed by the UI and defines which files are included/excluded
 
@@ -112,8 +111,10 @@ def _run_dev_mode(
         signal.signal(signal.SIGBREAK, kill_both)
 
     try:
-        while backend_proc.poll() is None and frontend_proc.poll() is None and (
-            electron_proc is None or electron_proc.poll() is None
+        while (
+            backend_proc.poll() is None
+            and frontend_proc.poll() is None
+            and (electron_proc is None or electron_proc.poll() is None)
         ):
             time.sleep(0.5)
     except KeyboardInterrupt:
@@ -314,7 +315,9 @@ def setup_environment():
         print("If npm is installed, make sure it's in your system PATH")
         print("\nTroubleshooting:")
         print("  - Try running 'node --version' and 'npm --version' in your terminal")
-        print("  - If they work there, the PATH might not be set correctly for this app")
+        print(
+            "  - If they work there, the PATH might not be set correctly for this app"
+        )
         sys.exit(1)
 
     print("\n✓ Runtime environment detected")
