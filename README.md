@@ -6,6 +6,8 @@ Local-first RAG app for document ingestion and citation-grounded Q&A.
 - Frontend: React/Vite
 - Storage: SQLite + sqlite-vec
 
+<_insert demo video>
+
 ## Quick Start (Production)
 
 **Prerequisites:** `uv` — [github.com/astral-sh/uv](https://github.com/astral-sh/uv?tab=readme-ov-file#installation)
@@ -21,11 +23,15 @@ Default app URL: http://127.0.0.1:8000
 ## Configuration (UI First)
 
 Use the Settings UI in the app to configure:
-1. Embedding model
-2. Inference model
-3. API keys
+1. System Prompt
+2. Embedding/Inference Model
+3. API Keys
+4. Model Temperature & Context Size
+5. Retrieval Top-K Results
 
+![General Settings Page](assets/general_settings.png)
 ![Model Configuration Page](assets/model_configuration.png)
+![Advanced Settings Page](assets/advanced_settings.png)
 
 Optionally, you may use an environment file to do this [.env.example](.env.example).
 
@@ -58,9 +64,10 @@ uv run app.py --help
 ## Contributing
 
 ```bash
-uv sync --group dev					# install test deps
+uv sync --group dev					# install test dependencies
 uv run scripts/cspyformatter.py  	# run formatting
 uv run pytest						# run all tests
+cd ui && npm run build				# build distribution files after UI changes 
 ```
 
 ## Troubleshooting
