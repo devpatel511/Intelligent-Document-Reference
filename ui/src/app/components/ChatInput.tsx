@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useChatContext, InferenceMode } from '@/app/contexts/ChatContext';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -31,6 +31,7 @@ export function ChatInput() {
     setSelectedModel,
     availableInferenceModels,
     sendMessage,
+    messages,
     indexedFiles,
     indexedDirectories,
     pipelineReady,
@@ -38,6 +39,11 @@ export function ChatInput() {
   } =
     useChatContext();
   const [input, setInput] = useState('');
+
+  const lastUserPrompt = useMemo(() => {
+    const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+    return lastUserMessage?.content ?? '';
+  }, [messages]);
 
   // Allow chatting if either the YAML config lists files/dirs OR the backend has indexed chunks
   const canChat = indexedFiles.length > 0 || indexedDirectories.length > 0 || (pipelineReady && indexedChunkCount > 0);
@@ -55,6 +61,13 @@ export function ChatInput() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+      return;
+    }
+
+    // Recall the latest user prompt when the composer is empty.
+    if (e.key === 'ArrowUp' && !input.trim() && lastUserPrompt) {
+      e.preventDefault();
+      setInput(lastUserPrompt);
     }
   };
 
@@ -138,7 +151,8 @@ export function ChatInput() {
       <div className="text-xs text-muted-foreground">
         Press <kbd className="px-1.5 py-0.5 bg-muted rounded border">Enter</kbd> to send,{' '}
         <kbd className="px-1.5 py-0.5 bg-muted rounded border">Shift</kbd> +{' '}
-        <kbd className="px-1.5 py-0.5 bg-muted rounded border">Enter</kbd> for new line
+        <kbd className="px-1.5 py-0.5 bg-muted rounded border">Enter</kbd> for new line,{' '}
+        <kbd className="px-1.5 py-0.5 bg-muted rounded border">↑</kbd> to recall your last prompt
       </div>
     </form>
   );
