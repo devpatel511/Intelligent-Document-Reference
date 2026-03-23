@@ -291,6 +291,7 @@ def build_file_tree(
                     excl_patterns,
                     statuses,
                     sup_exts,
+                    reindex_in_progress,
                 )
                 if children:
                     node["children"] = children
@@ -303,6 +304,9 @@ def build_file_tree(
                     db_status = statuses[abs_path]
                     if reindex_in_progress and db_status == "pending":
                         node["status"] = "outdated"
+                    elif not reindex_in_progress and db_status == "outdated":
+                        # Outdated means reindex is required, not currently running.
+                        node["status"] = "pending"
                     else:
                         node["status"] = db_status
                 else:
@@ -416,9 +420,12 @@ async def list_files(ctx: AppContext = Depends(get_context)):
             status = "unsupported"
         elif abs_path in file_statuses:
             db_status = file_statuses[abs_path]
-            status = (
-                "outdated" if reindex_active and db_status == "pending" else db_status
-            )
+            if reindex_active and db_status == "pending":
+                status = "outdated"
+            elif not reindex_active and db_status == "outdated":
+                status = "pending"
+            else:
+                status = db_status
         else:
             status = "outdated" if reindex_active else "pending"
 

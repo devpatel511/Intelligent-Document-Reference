@@ -118,6 +118,7 @@ export function SettingsPage() {
     reindexRequired,
     outdatedFileCount,
     loadFiles,
+    refreshPipelineStatus,
   } = useChatContext();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -362,6 +363,7 @@ export function SettingsPage() {
     } finally {
       window.clearInterval(pollId);
       await loadFiles();
+      await refreshPipelineStatus();
       setIsReindexing(false);
     }
   };
@@ -417,8 +419,8 @@ export function SettingsPage() {
             <p className="text-sm font-medium">Reindex required after embedding configuration change</p>
             <p className="text-xs mt-1">
               {outdatedFileCount > 0
-                ? `${outdatedFileCount} file${outdatedFileCount === 1 ? '' : 's'} marked outdated. Run indexing to rebuild vectors.`
-                : 'Some vectors are outdated. Run indexing to rebuild vectors.'}
+                ? `${outdatedFileCount} file${outdatedFileCount === 1 ? '' : 's'} marked outdated. Run reindexing to rebuild vectors.`
+                : 'Some vectors are outdated. Run reindexing to rebuild vectors.'}
             </p>
           </div>
         )}

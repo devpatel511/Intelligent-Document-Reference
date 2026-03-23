@@ -40,6 +40,7 @@ Run commands:
 ```bash
 uv run app.py --setup
 uv run app.py --dev
+uv run app.py --dev --reset  # reset state before startup
 ```
 
 Optionally, run Electron mini-mode helper (**experimental**):

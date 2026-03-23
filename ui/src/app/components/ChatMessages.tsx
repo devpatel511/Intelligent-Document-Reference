@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useChatContext, Citation } from '@/app/contexts/ChatContext';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
-import { User, Bot, FileText, ArrowDown } from 'lucide-react';
+import { User, Bot, FileText, ArrowDown, Copy, Check } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { format } from 'date-fns';
 import { Button } from '@/app/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/app/components/ui/tooltip';
+import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
@@ -42,6 +43,7 @@ function confidenceMeta(score: number): { label: string; note: string; className
 
 export function ChatMessages() {
   const { messages, isLoading, openPath } = useChatContext();
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   const handleOpenPath = useCallback(
     (path: string) => {
@@ -79,6 +81,20 @@ export function ChatMessages() {
     wasAtBottomRef.current = near;
     setShowScrollButton(!near);
   }, [isNearBottom]);
+
+  const handleCopyMessage = useCallback(async (messageId: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      toast.success('Prompt copied to clipboard');
+      window.setTimeout(() => {
+        setCopiedMessageId((current) => (current === messageId ? null : current));
+      }, 1500);
+    } catch (error) {
+      console.error('Failed to copy prompt:', error);
+      toast.error('Failed to copy prompt');
+    }
+  }, []);
 
   const renderMarkdown = (content: string) => (
     <div className="markdown-canvas text-sm">
@@ -238,6 +254,22 @@ export function ChatMessages() {
 
                 <div className="flex items-center text-xs text-muted-foreground px-2">
                   <span>{format(message.timestamp, 'HH:mm')}</span>
+                  {message.role === 'user' && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 ml-2 cursor-pointer"
+                      onClick={() => handleCopyMessage(message.id, message.content)}
+                      title="Copy prompt"
+                    >
+                      {copiedMessageId === message.id ? (
+                        <Check className="h-3.5 w-3.5" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  )}
                   {message.role === 'assistant' && message.processingTimeMs !== undefined && (
                     <span className="ml-2">({message.processingTimeMs}ms)</span>
                   )}

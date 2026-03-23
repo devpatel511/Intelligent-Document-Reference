@@ -116,6 +116,7 @@ interface ChatContextType {
   getFileIndexingConfig: () => Promise<{ inclusion?: { directories?: string[] } }>;
   loadFileIndexingConfig: () => Promise<void>;
   loadFiles: () => Promise<void>;
+  refreshPipelineStatus: () => Promise<void>;
   saveSettings: () => Promise<void>;
   saveSetting: (key: string, value: any) => Promise<void>;
   refreshOllamaModels: (endpoint?: string) => Promise<string[]>;
@@ -1232,6 +1233,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         getFileIndexingConfig,
         loadFileIndexingConfig,
         loadFiles,
+        refreshPipelineStatus: checkPipelineStatus,
         saveSettings,
         saveSetting,
         refreshOllamaModels,
