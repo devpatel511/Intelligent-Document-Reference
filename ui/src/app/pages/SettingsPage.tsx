@@ -868,12 +868,6 @@ export function SettingsPage() {
                   )}
                 </div>
 
-                {hasUnsavedIndexingChanges && (
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
-                    You have unsaved indexing changes. Save Configuration before leaving this page.
-                  </p>
-                )}
-
                 <div className="flex items-center justify-between pt-4 border-t">
                   <p className="text-sm text-muted-foreground">
                     Included files will be used for retrieval-augmented generation, while excluded files will be ignored.

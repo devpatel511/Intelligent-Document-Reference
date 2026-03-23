@@ -8,34 +8,50 @@ import signal
 import subprocess
 import sys
 import time
-import tomllib
-import venv
 from pathlib import Path
 from typing import Any
 
 
-def _run_dev_mode(host: str = "127.0.0.1", port: int = 8000) -> None:
+FILE_INDEXING_DEFAULT_CONTENT = """# File indexing configuration
+# This file is managed by the UI and defines which files are included/excluded
+
+inclusion:
+    # List of file paths to include in indexing
+    files: []
+    # List of directory paths to include (all files within)
+    directories: []
+
+exclusion:
+    # List of file paths to exclude from indexing
+    files: []
+    # List of directory paths to exclude (all files within)
+    directories: []
+    # Exclusion patterns (wildcards, extensions, etc.)
+    patterns: []
+
+context:
+    # List of file paths selected for current conversation context
+    # Only leaf files (not directories) should be here
+    files: []
+"""
+
+
+def _run_dev_mode(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    with_electron: bool = False,
+) -> None:
     """Run backend (uvicorn --reload) and frontend (npm run dev) for development."""
     project_root = Path(__file__).parent
     ui_dir = project_root / "ui"
-    venv_path = project_root / ".venv"
-
-    if sys.platform == "win32":
-        venv_python = venv_path / "Scripts" / "python.exe"
-    else:
-        venv_python = venv_path / "bin" / "python"
-
-    if not venv_python.exists():
-        print("ERROR: Virtual environment not found. Run: python app.py --setup")
-        sys.exit(1)
 
     if not (ui_dir / "node_modules").exists():
-        print("Node dependencies not found. Run: python app.py --setup")
+        print("Node dependencies not found. Run: uv run app.py --setup")
         sys.exit(1)
 
     # Backend: uvicorn with --reload
     backend_cmd = [
-        str(venv_python),
+        sys.executable,
         "-m",
         "uvicorn",
         "backend.main:app",
@@ -61,7 +77,9 @@ def _run_dev_mode(host: str = "127.0.0.1", port: int = 8000) -> None:
     print(
         f"  Frontend: http://localhost:5173 (uses backend API at {frontend_env['VITE_API_BASE_URL']})"
     )
-    print("Press Ctrl+C to stop both.")
+    if with_electron:
+        print("  Electron: dev helper enabled")
+    print("Press Ctrl+C to stop all dev processes.")
 
     backend_proc = subprocess.Popen(
         backend_cmd,
@@ -76,10 +94,17 @@ def _run_dev_mode(host: str = "127.0.0.1", port: int = 8000) -> None:
         stdout=sys.stdout,
         stderr=sys.stderr,
     )
+    electron_proc = (
+        _start_mini_mode_helper(host, port, ui_base_url="http://localhost:5173")
+        if with_electron
+        else None
+    )
 
     def kill_both(*_args, **_kwargs):
         backend_proc.terminate()
         frontend_proc.terminate()
+        if electron_proc and electron_proc.poll() is None:
+            electron_proc.terminate()
 
     signal.signal(signal.SIGINT, kill_both)
     signal.signal(signal.SIGTERM, kill_both)
@@ -87,40 +112,136 @@ def _run_dev_mode(host: str = "127.0.0.1", port: int = 8000) -> None:
         signal.signal(signal.SIGBREAK, kill_both)
 
     try:
-        while backend_proc.poll() is None and frontend_proc.poll() is None:
+        while backend_proc.poll() is None and frontend_proc.poll() is None and (
+            electron_proc is None or electron_proc.poll() is None
+        ):
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
     kill_both()
     backend_proc.wait()
     frontend_proc.wait()
+    if electron_proc:
+        try:
+            electron_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            electron_proc.kill()
 
 
-def check_command_exists(command: str) -> bool:
-    """Check if a command exists in the system PATH (cross-platform)."""
-    # Use shutil.which for cross-platform command detection
-    if shutil.which(command) is not None:
-        return True
+def _install_node_deps_if_missing(target_dir: Path, label: str) -> None:
+    """Install npm dependencies in target_dir when node_modules is missing."""
+    if (target_dir / "node_modules").exists():
+        return
 
-    # Fallback: try running the command to verify it works
+    npm_path = shutil.which("npm")
+    if not npm_path:
+        print("ERROR: npm not found.")
+        sys.exit(1)
+
+    print(f"{label} dependencies not found. Installing...")
     try:
-        subprocess.run(
-            [command, "--version"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-            timeout=5,
-        )
-        return True
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired,
-    ):
-        return False
+        subprocess.run([npm_path, "install"], check=True, cwd=target_dir)
+        print(f"✓ {label} dependencies installed")
+    except subprocess.CalledProcessError as exc:
+        print(f"ERROR: failed to install {label} dependencies: {exc}")
+        sys.exit(1)
 
 
-def _start_mini_mode_helper(host: str, port: int) -> subprocess.Popen[Any] | None:
+def _ensure_electron_deps_ready(mini_mode_dir: Path) -> None:
+    """Ensure Electron app dependencies are installed."""
+    _install_node_deps_if_missing(mini_mode_dir, "Electron")
+
+
+def _run_production_mode(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> None:
+    """Run backend server that serves API and built SPA on one port."""
+    project_root = Path(__file__).parent
+
+    backend_cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "backend.main:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--log-level",
+        "info",
+    ]
+
+    print("Starting production stack...")
+    print(f"  Backend API + SPA routes: http://{host}:{port}")
+    print("Press Ctrl+C to stop the server.")
+
+    backend_proc = subprocess.Popen(
+        backend_cmd,
+        cwd=str(project_root),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+
+    processes = [backend_proc]
+
+    def kill_all(*_args, **_kwargs):
+        for proc in processes:
+            if proc.poll() is None:
+                proc.terminate()
+
+    signal.signal(signal.SIGINT, kill_all)
+    signal.signal(signal.SIGTERM, kill_all)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, kill_all)
+
+    try:
+        while all(proc.poll() is None for proc in processes):
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        kill_all()
+        for proc in processes:
+            try:
+                proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+
+def _reset_runtime_state(project_root: Path) -> None:
+    """Delete local DB files and restore default file indexing config."""
+    print("Applying runtime reset...")
+
+    db_paths = [
+        project_root / "file_registry.db",
+        project_root / "local_search.db",
+    ]
+    for db_path in db_paths:
+        if db_path.exists():
+            try:
+                db_path.unlink()
+                print(f"✓ Removed {db_path.name}")
+            except OSError as exc:
+                print(f"Warning: failed to remove {db_path.name}: {exc}")
+        else:
+            print(f"- {db_path.name} not found (skipped)")
+
+    config_path = project_root / "config" / "file_indexing.yaml"
+    try:
+        config_path.write_text(FILE_INDEXING_DEFAULT_CONTENT, encoding="utf-8")
+        print("✓ Restored config/file_indexing.yaml to default")
+    except OSError as exc:
+        print(f"ERROR: failed to restore {config_path}: {exc}")
+        sys.exit(1)
+
+
+def _start_mini_mode_helper(
+    host: str,
+    port: int,
+    *,
+    ui_base_url: str | None = None,
+) -> subprocess.Popen[Any] | None:
     """Start the Electron mini-mode sidecar used by the global hotkey widget."""
     project_root = Path(__file__).parent
     mini_mode_dir = project_root / "desktop" / "mini-mode"
@@ -144,8 +265,9 @@ def _start_mini_mode_helper(host: str, port: int) -> subprocess.Popen[Any] | Non
             return None
 
     mini_env = os.environ.copy()
-    mini_env["MINI_MODE_MAIN_URL"] = f"http://{host}:{port}/chat"
-    mini_env["MINI_MODE_WIDGET_URL"] = f"http://{host}:{port}/mini"
+    app_base_url = ui_base_url or f"http://{host}:{port}"
+    mini_env["MINI_MODE_MAIN_URL"] = f"{app_base_url}/chat"
+    mini_env["MINI_MODE_WIDGET_URL"] = f"{app_base_url}/mini"
 
     try:
         proc = subprocess.Popen(
@@ -166,57 +288,6 @@ def _start_mini_mode_helper(host: str, port: int) -> subprocess.Popen[Any] | Non
     return proc
 
 
-def _latest_mtime(root: Path) -> float:
-    """Return latest mtime under root (files only), or 0 when path is missing."""
-    if not root.exists():
-        return 0.0
-
-    latest = 0.0
-    for path in root.rglob("*"):
-        if path.is_file():
-            try:
-                mtime = path.stat().st_mtime
-            except OSError:
-                continue
-            if mtime > latest:
-                latest = mtime
-    return latest
-
-
-def _ui_build_is_stale(ui_dir: Path, ui_build_path: Path) -> bool:
-    """Check whether ui/dist is older than key UI source files."""
-    if not ui_build_path.exists():
-        return True
-
-    dist_index = ui_build_path / "index.html"
-    if not dist_index.exists():
-        return True
-
-    try:
-        dist_mtime = dist_index.stat().st_mtime
-    except OSError:
-        return True
-
-    source_roots = [
-        ui_dir / "src",
-        ui_dir / "index.html",
-        ui_dir / "package.json",
-        ui_dir / "vite.config.ts",
-        ui_dir / "vite.config.js",
-    ]
-    newest_source = 0.0
-    for src in source_roots:
-        if src.is_dir():
-            newest_source = max(newest_source, _latest_mtime(src))
-        elif src.exists():
-            try:
-                newest_source = max(newest_source, src.stat().st_mtime)
-            except OSError:
-                continue
-
-    return newest_source > dist_mtime
-
-
 def setup_environment():
     """Set up the development environment."""
     print("=" * 60)
@@ -224,75 +295,40 @@ def setup_environment():
     print("=" * 60)
 
     project_root = Path(__file__).parent
-    venv_path = project_root / ".venv"
 
-    # Check for Python
-    if not check_command_exists("python3") and not check_command_exists("python"):
-        print("ERROR: Python 3 is not installed or not in PATH")
-        print("Please install Python 3.10 or higher from https://www.python.org/")
+    if not shutil.which("uv"):
+        print("ERROR: uv is not installed or not in PATH")
+        print("Please install uv: https://docs.astral.sh/uv/")
         sys.exit(1)
 
-    python_cmd = "python3" if check_command_exists("python3") else "python"
-
     # Check for Node.js and npm
-    if not check_command_exists("node"):
+    if not shutil.which("node"):
         print("ERROR: Node.js is not installed or not in PATH")
         print("Please install Node.js from https://nodejs.org/")
         print("If Node.js is installed, make sure it's in your system PATH")
         sys.exit(1)
 
-    if not check_command_exists("npm"):
+    if not shutil.which("npm"):
         print("ERROR: npm is not installed or not in PATH")
         print("Please install npm (usually comes with Node.js)")
         print("If npm is installed, make sure it's in your system PATH")
         print("\nTroubleshooting:")
         print("  - Try running 'node --version' and 'npm --version' in your terminal")
-        print(
-            "  - If they work there, the PATH might not be set correctly for Python subprocess"
-        )
+        print("  - If they work there, the PATH might not be set correctly for this app")
         sys.exit(1)
 
-    print(f"\n✓ Python found: {python_cmd}")
+    print("\n✓ Runtime environment detected")
+    print("✓ uv found")
     print("✓ Node.js found")
     print("✓ npm found")
 
-    # Create virtual environment if it doesn't exist
-    if not venv_path.exists():
-        print(f"\nCreating Python virtual environment at {venv_path}...")
-        venv.create(venv_path, with_pip=True)
-        print("✓ Virtual environment created")
-    else:
-        print(f"\n✓ Virtual environment already exists at {venv_path}")
-
-    # Determine the correct pip and python paths for the venv (cross-platform)
-    # Python's venv module handles this automatically, but we need the paths
-    if sys.platform == "win32":
-        venv_python = venv_path / "Scripts" / "python.exe"  # noqa
-        venv_pip = venv_path / "Scripts" / "pip.exe"
-    else:
-        venv_python = venv_path / "bin" / "python"  # noqa
-        venv_pip = venv_path / "bin" / "pip"
-
-    # Install Python dependencies
-    print("\nInstalling Python dependencies...")
+    # Install uv-managed project dependencies.
+    print("\nInstalling uv project dependencies...")
     try:
-        # Check if uv is available
-        if check_command_exists("uv"):
-            print("Using uv to install dependencies...")
-            subprocess.run(["uv", "sync"], check=True, cwd=project_root)
-        else:
-            print("uv not found. Installing dependencies with pip...")
-            pyproject_file = project_root / "pyproject.toml"
-            with open(pyproject_file, "rb") as f:
-                pyproject_data = tomllib.load(f)
-
-            dependencies = pyproject_data["project"]["dependencies"]
-            subprocess.run(
-                [str(venv_pip), "install"] + dependencies, check=True, cwd=project_root
-            )
-        print("✓ Python dependencies installed")
+        subprocess.run(["uv", "sync"], check=True, cwd=project_root)
+        print("✓ uv project dependencies installed")
     except Exception as e:
-        print(f"ERROR: Failed to install Python dependencies: {e}")
+        print(f"ERROR: Failed to install uv project dependencies: {e}")
         sys.exit(1)
 
     # Install Node.js dependencies
@@ -311,15 +347,21 @@ def setup_environment():
         print(f"ERROR: Failed to install Node.js dependencies: {e}")
         sys.exit(1)
 
-    # Build frontend
+    # Install Electron dependencies
+    mini_mode_dir = project_root / "desktop" / "mini-mode"
+    if mini_mode_dir.exists():
+        print("\nInstalling Electron dependencies...")
+        _ensure_electron_deps_ready(mini_mode_dir)
+    else:
+        print("\nMini mode app not found; skipping Electron dependency install.")
+
+    # Build frontend for production SPA serving.
     print("\nBuilding frontend...")
     try:
-        # Find npm executable path (works cross-platform)
         npm_path = shutil.which("npm")
         if npm_path:
             subprocess.run([npm_path, "run", "build"], check=True, cwd=ui_dir)
         else:
-            # Fallback: use shell execution if path not found
             subprocess.run("npm run build", shell=True, check=True, cwd=ui_dir)
         print("✓ Frontend built successfully")
     except subprocess.CalledProcessError as e:
@@ -330,12 +372,7 @@ def setup_environment():
     print("Setup completed successfully!")
     print("=" * 60)
     print("\nYou can now run the application with:")
-    print("  python3 app.py --webui")
-    print("\nOr activate the virtual environment first:")
-    if sys.platform == "win32":
-        print("  .venv\\Scripts\\activate")
-    else:
-        print("  source .venv/bin/activate")
+    print("  uv run app.py")
     print("=" * 60)
 
 
@@ -656,10 +693,7 @@ def main():
     parser.add_argument(
         "--setup",
         action="store_true",
-        help="Set up the environment (install dependencies, build frontend)",
-    )
-    parser.add_argument(
-        "--webui", action="store_true", help="Launch the web UI with backend server"
+        help="Set up the environment (uv sync + UI/Electron dependencies + UI build)",
     )
     parser.add_argument(
         "--host",
@@ -754,153 +788,52 @@ def main():
         help="Skip dataset indexing and run queries against existing index.",
     )
     parser.add_argument(
-        "--no-mini-mode",
+        "--electron",
+        dest="electron",
         action="store_true",
-        help="Do not auto-launch the Mini Mode desktop helper when using --webui.",
+        help=(
+            "Run development mode with Electron mini-mode helper (equivalent to "
+            "--dev --electron)."
+        ),
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help=(
+            "Reset local runtime state before running: remove file_registry.db and "
+            "local_search.db from project root, and restore config/file_indexing.yaml defaults."
+        ),
     )
 
     args = parser.parse_args()
+    project_root = Path(__file__).parent
+
+    if args.reset:
+        _reset_runtime_state(project_root)
 
     if args.setup:
         setup_environment()
-        # After setup, continue to launch web UI if requested
-        if not args.webui:
+        # After setup, continue only when another explicit action was requested.
+        if not args.dev and not args.electron and args.benchmark is None:
             return
-
-    if args.dev:
-        _run_dev_mode(host=args.host, port=args.port)
-        return
 
     if args.benchmark is not None:
         _run_benchmark(args)
         return
 
-    if args.webui:
-        ui_dir = Path(__file__).parent / "ui"
-        ui_build_path = ui_dir / "dist"
-        node_modules_path = ui_dir / "node_modules"
+    if args.electron:
+        _run_dev_mode(host=args.host, port=args.port, with_electron=True)
+        return
 
-        # Check if Node.js dependencies are installed
-        if not node_modules_path.exists():
-            print("Node.js dependencies not found. Installing...")
-            os.chdir(ui_dir)
-            try:
-                # Find npm executable path (works cross-platform)
-                npm_path = shutil.which("npm")
-                if npm_path:
-                    subprocess.run([npm_path, "install"], check=True)
-                else:
-                    # Fallback: use shell execution if path not found
-                    subprocess.run("npm install", shell=True, check=True)
-                print("✓ Node.js dependencies installed")
-            except subprocess.CalledProcessError:
-                print("Error installing Node.js dependencies.")
-                print("Please run 'npm install' in the ui/ directory.")
-                sys.exit(1)
-            except FileNotFoundError:
-                print("npm not found. Please install Node.js and npm.")
-                sys.exit(1)
-            finally:
-                os.chdir(Path(__file__).parent)
+    if args.dev:
+        _run_dev_mode(host=args.host, port=args.port, with_electron=False)
+        return
 
-        # Build frontend when missing or stale so /mini reflects latest styling fixes.
-        if _ui_build_is_stale(ui_dir, ui_build_path):
-            print("Frontend build is missing or stale. Building frontend...")
-            os.chdir(ui_dir)
-            try:
-                # Find npm executable path (works cross-platform)
-                npm_path = shutil.which("npm")
-                if npm_path:
-                    subprocess.run([npm_path, "run", "build"], check=True)
-                else:
-                    # Fallback: use shell execution if path not found
-                    subprocess.run("npm run build", shell=True, check=True)
-                print("✓ Frontend built successfully!")
-            except subprocess.CalledProcessError:
-                print("Error building frontend.")
-                print("Please run 'npm run build' in the ui/ directory.")
-                sys.exit(1)
-            except FileNotFoundError:
-                print("npm not found. Please install Node.js and npm.")
-                sys.exit(1)
-            finally:
-                os.chdir(Path(__file__).parent)
-
-        print(f"Starting web UI server on http://{args.host}:{args.port}")
-        print("Press Ctrl+C to stop the server")
-
-        # Check if we're using the venv's Python, and if not, suggest using it
-        venv_path = Path(__file__).parent / ".venv"
-        using_venv_python = False
-
-        if venv_path.exists():
-            if sys.platform == "win32":
-                venv_python = venv_path / "Scripts" / "python.exe"
-            else:
-                venv_python = venv_path / "bin" / "python"
-
-            # Check if current Python is from venv
-            current_python = Path(sys.executable).resolve()
-            venv_python_resolved = (
-                venv_python.resolve() if venv_python.exists() else None
-            )
-
-            if venv_python_resolved and current_python == venv_python_resolved:
-                using_venv_python = True
-
-        # Import dependencies only when needed (after setup)
-        try:
-            import uvicorn
-
-            from backend.main import app
-        except ImportError as e:
-            print(f"ERROR: Required dependencies not installed: {e}")
-            print(
-                "\nThe issue is that the Python interpreter you're using doesn't have the dependencies."
-            )
-
-            if venv_path.exists() and not using_venv_python:
-                print("\nSolution: Use the virtual environment's Python directly:")
-                if sys.platform == "win32":
-                    venv_python = venv_path / "Scripts" / "python.exe"
-                    print(f"  {venv_python} app.py --webui")
-                else:
-                    venv_python = venv_path / "bin" / "python"
-                    print(f"  {venv_python} app.py --webui")
-            else:
-                print("\nTroubleshooting:")
-                print("1. Make sure you've run: python3 app.py --setup")
-                print("2. If using a virtual environment, activate it first:")
-                if sys.platform == "win32":
-                    print("   .venv\\Scripts\\activate")
-                    print("   Then use: python app.py --webui")
-                else:
-                    print("   source .venv/bin/activate")
-                    print("   Then use: python app.py --webui")
-                print("3. Or use the venv's Python directly:")
-                if sys.platform == "win32":
-                    print("   .venv\\Scripts\\python.exe app.py --webui")
-                else:
-                    print("   .venv/bin/python app.py --webui")
-            sys.exit(1)
-
-        mini_mode_proc: subprocess.Popen[Any] | None = None
-        if not args.no_mini_mode:
-            mini_mode_proc = _start_mini_mode_helper(args.host, args.port)
-
-        try:
-            # Run the FastAPI server with static file serving
-            uvicorn.run(app, host=args.host, port=args.port, log_level="info")
-        finally:
-            if mini_mode_proc and mini_mode_proc.poll() is None:
-                mini_mode_proc.terminate()
-                try:
-                    mini_mode_proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    mini_mode_proc.kill()
-    else:
-        print("Use --webui flag to launch the web interface")
-        parser.print_help()
+    # Production default: no flags starts backend that also serves the SPA.
+    _run_production_mode(
+        host=args.host,
+        port=args.port,
+    )
 
 
 if __name__ == "__main__":
