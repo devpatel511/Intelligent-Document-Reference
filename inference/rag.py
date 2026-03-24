@@ -62,18 +62,18 @@ class RAGProcessor:
                     break
             context_str += segment
 
-        return (
-            f"{system_instruction}\n"
-            f"CONTEXT:\n{context_str}\n\n"
-            f"USER QUESTION: {query}\nANSWER:"
-        )
+        # return (
+        #     f"{system_instruction}\n"
+        #     f"CONTEXT:\n{context_str}\n\n"
+        #     f"USER QUESTION: {query}\nANSWER:"
+        # )
 
         if chat_history_context:
-            prompt += f"CONVERSATION HISTORY:\n{chat_history_context}\n\n"
+            system_instruction += f"CONVERSATION HISTORY:\n{chat_history_context}\n\n"
 
-        prompt += f"CONTEXT:\n{context_str}\n\n" f"USER QUESTION: {query}\nANSWER:"
+        system_instruction += f"CONTEXT:\n{context_str}\n\n" f"USER QUESTION: {query}\nANSWER:"
 
-        return prompt
+        return system_instruction
 
     async def generate_response(
         self,
