@@ -27,7 +27,6 @@ class QueryRequest(BaseModel):
     context_size: Optional[int] = 4096
     top_k: Optional[int] = 5
     system_prompt: Optional[str] = None
-    chunk_size: Optional[int] = None
 
 
 @router.get("/status")

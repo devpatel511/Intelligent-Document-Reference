@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useChatContext, InferenceMode } from '@/app/contexts/ChatContext';
+import { useState } from 'react';
+import { useChatContext } from '@/app/contexts/ChatContext';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 import {
@@ -9,24 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { Send, Search, MessageCircleQuestion, Microscope, Sparkles } from 'lucide-react';
-
-const modeIcons = {
-  retrieval: Search,
-  'q&a': MessageCircleQuestion,
-  'deep-research': Microscope,
-};
-
-const modeLabels = {
-  retrieval: 'Retrieval',
-  'q&a': 'Q&A',
-  'deep-research': 'Deep Research',
-};
+import { Send, Search, Sparkles } from 'lucide-react';
 
 export function ChatInput() {
   const {
-    inferenceMode,
-    setInferenceMode,
     selectedModel,
     setSelectedModel,
     availableInferenceModels,
@@ -104,24 +90,10 @@ export function ChatInput() {
         />
         
         <div className="absolute bottom-2 left-2 right-2 flex items-center gap-2">
-          <Select value={inferenceMode} onValueChange={(value) => setInferenceMode(value as InferenceMode)}>
-            <SelectTrigger className="w-[160px] h-9 border-black cursor-pointer">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(modeIcons) as InferenceMode[]).map((mode) => {
-                const Icon = modeIcons[mode];
-                return (
-                  <SelectItem key={mode} value={mode} className="cursor-pointer">
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-4 w-4" />
-                      <span>{modeLabels[mode]}</span>
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 px-3 h-9 border rounded-md border-black">
+            <Search className="h-4 w-4" />
+            <span className="text-sm">Retrieval</span>
+          </div>
 
           <Select value={selectedModel} onValueChange={setSelectedModel}>
             <SelectTrigger className="w-[160px] h-9 border-black cursor-pointer">

@@ -96,14 +96,12 @@ export function SettingsPage() {
     setContextSize,
     topK,
     setTopK,
-    chunkSize,
-    setChunkSize,
+
     systemPrompt,
     setSystemPrompt,
     darkMode,
     setDarkMode,
-    userInfo,
-    setUserInfo,
+
     indexedFiles,
     indexedDirectories,
     toggleIndexedFile,
@@ -488,29 +486,7 @@ export function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>User Information</CardTitle>
-                <CardDescription>
-                  Provide context about yourself to personalize responses
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="user-info">User Information</Label>
-                  <Textarea
-                    id="user-info"
-                    value={userInfo}
-                    onChange={(e) => setUserInfo(e.target.value)}
-                    placeholder="Enter information about yourself, your role, preferences, etc."
-                    className="min-h-[100px]"
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    This information will help the AI provide more personalized responses
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+
 
             <div className="flex justify-end">
               <Button onClick={handleSaveSettings} disabled={isSavingSettings} className="cursor-pointer">
@@ -1070,26 +1046,7 @@ export function SettingsPage() {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="chunk-size">Chunk Size (tokens)</Label>
-                    <span className="text-sm text-muted-foreground">
-                      {chunkSize !== null ? chunkSize : 'Default (300-700)'}
-                    </span>
-                  </div>
-                  <Slider
-                    id="chunk-size"
-                    min={128}
-                    max={2048}
-                    step={128}
-                    value={[chunkSize !== null ? chunkSize : 512]}
-                    onValueChange={(value) => setChunkSize(value[0])}
-                    className="cursor-pointer"
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Size of text chunks for document indexing (used for future re-indexing)
-                  </p>
-                </div>
+
               </CardContent>
             </Card>
 
