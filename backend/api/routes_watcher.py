@@ -5,14 +5,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.api.routes_files import (
     _sync_watcher_to_inclusion_directories,
     load_file_indexing_config,
     save_file_indexing_config,
 )
+from backend.deps import get_context
 from backend.schemas import SyncPathsRequest, WatchPathRequest, WatchPathResponse
+from core.context import AppContext
 
 # Assuming the app is run from root, we can import watcher
 try:
@@ -174,7 +176,10 @@ def pick_folder():
 
 
 @router.post("/browse")
-def browse_folder(type: str = Query("inclusion", description="inclusion or exclusion")):
+def browse_folder(
+    type: str = Query("inclusion", description="inclusion or exclusion"),
+    ctx: AppContext = Depends(get_context),
+):
     """Open native folder picker (tkinter); get full path and add to inclusion or exclusion in YAML."""
     path = open_folder_dialog()
     if not path or not path.strip():
@@ -210,7 +215,8 @@ def browse_folder(type: str = Query("inclusion", description="inclusion or exclu
             inclusion["directories"] = dirs
             config["inclusion"] = inclusion
             save_file_indexing_config(config)
-            _sync_watcher_to_inclusion_directories(dirs)
+            _sync_watcher_to_inclusion_directories(dirs, ctx=ctx)
+        ctx.dirty = True
         updated_paths = registry.get_watch_paths()
         return {
             "path": clean_path,
@@ -286,7 +292,8 @@ async def get_watch_paths():
 
 @router.delete("/path", response_model=WatchPathResponse)
 async def remove_watch_path_by_path(
-    path: str = Query(..., description="Path to stop watching")
+    path: str = Query(..., description="Path to stop watching"),
+    ctx: AppContext = Depends(get_context),
 ):
     """Remove a path from the watcher (sets is_active=0) and purge indexed data."""
     raw = os.path.abspath(os.path.expanduser(path))
@@ -305,6 +312,8 @@ async def remove_watch_path_by_path(
             unified_db.remove_file(clean_path)
     except Exception:
         pass
+
+    ctx.dirty = True
 
     # Remove from YAML inclusion (check both directories and files lists)
     config = load_file_indexing_config()
