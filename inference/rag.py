@@ -13,6 +13,7 @@ class RAGProcessor:
         query: str,
         chunks: List[Dict[str, Any]],
         *,
+        system_prompt: str | None = None,
         max_context_chars: int | None = None,
         max_chunk_chars: int | None = None,
         chat_history_context: str | None = None,
@@ -29,6 +30,15 @@ class RAGProcessor:
         Returns:
             Formatted prompt string.
         """
+        # Use custom system prompt if provided, otherwise use default
+        system_instruction = system_prompt or (
+            "You are a professional assistant. Use the context below to answer "
+            "accurately and concisely.\n"
+            "Return markdown only (headings, bullet lists, tables where helpful).\n"
+            "Do not append source markers in the answer text.\n"
+            "Do not include absolute or relative source file paths in the answer body.\n"
+        )
+
         context_str = ""
         for c in chunks:
             chunk_text = c["text_content"]
@@ -52,13 +62,10 @@ class RAGProcessor:
                     break
             context_str += segment
 
-        # Build prompt with optional chat history
-        prompt = (
-            "You are a professional assistant. Use the context below to answer "
-            "accurately and concisely.\n"
-            "Return markdown only (headings, bullet lists, tables where helpful).\n"
-            "Do not append source markers in the answer text.\n"
-            "Do not include absolute or relative source file paths in the answer body.\n"
+        return (
+            f"{system_instruction}\n"
+            f"CONTEXT:\n{context_str}\n\n"
+            f"USER QUESTION: {query}\nANSWER:"
         )
 
         if chat_history_context:
@@ -86,11 +93,13 @@ class RAGProcessor:
         Returns:
             Generated response text.
         """
+        system_prompt = generate_kwargs.pop("system_prompt", None)
         max_context_chars = generate_kwargs.pop("max_context_chars", None)
         max_chunk_chars = generate_kwargs.pop("max_chunk_chars", None)
         prompt = self.build_prompt(
             query,
             chunks,
+            system_prompt=system_prompt,
             max_context_chars=max_context_chars,
             max_chunk_chars=max_chunk_chars,
             chat_history_context=chat_history_context,

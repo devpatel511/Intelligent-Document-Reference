@@ -59,6 +59,7 @@ interface ChatContextType {
   apiKeys: Record<string, string>;
   temperature: number;
   contextSize: number;
+  topK: number;
   indexedFiles: string[];
   indexedDirectories: string[];
   excludedFiles: string[];
@@ -72,7 +73,6 @@ interface ChatContextType {
   // General settings
   systemPrompt: string;
   darkMode: boolean;
-  userInfo: string;
   sendMessage: (content: string) => Promise<void>;
   setInferenceMode: (mode: InferenceMode) => void;
   setSelectedModel: (model: ModelType) => void;
@@ -86,6 +86,7 @@ interface ChatContextType {
   setApiKey: (model: string, key: string) => void;
   setTemperature: (temp: number) => void;
   setContextSize: (size: number) => void;
+  setTopK: (k: number) => void;
   toggleIndexedFile: (path: string) => void;
   toggleExcludedFile: (path: string) => void;
   addIndexedDirectory: (path: string) => void;
@@ -96,7 +97,6 @@ interface ChatContextType {
   removeExclusionPattern: (pattern: string) => void;
   setSystemPrompt: (prompt: string) => void;
   setDarkMode: (enabled: boolean) => void;
-  setUserInfo: (info: string) => void;
   importFolder: (files: FileList, type: 'inclusion' | 'exclusion') => Promise<void>;
   setWatcherPath: (path: string) => Promise<boolean>;
   browseFolderForWatcher: (type?: 'inclusion' | 'exclusion') => Promise<{ path: string; status: string } | null>;
@@ -208,6 +208,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   });
   const [temperature, setTemperature] = useState<number>(0.7);
   const [contextSize, setContextSize] = useState<number>(4096);
+  const [topK, setTopK] = useState<number>(5);
   const [indexedFiles, setIndexedFiles] = useState<string[]>([]);
   const [indexedDirectories, setIndexedDirectories] = useState<string[]>([]);
   const [excludedFiles, setExcludedFiles] = useState<string[]>([]);
@@ -221,9 +222,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [watcherPath, setWatcherPathState] = useState<string | null>(null);
   const [userRoot, setUserRootState] = useState<string | null>(null);
   // General settings
-  const [systemPrompt, setSystemPrompt] = useState<string>('You are a helpful AI assistant that provides accurate and detailed answers based on the provided context.');
+  const [systemPrompt, setSystemPrompt] = useState<string>(
+    "You are a professional assistant. Use the context below to answer accurately and concisely.\n" +
+    "Return markdown only (headings, bullet lists, tables where helpful).\n" +
+    "Do not append source markers in the answer text.\n" +
+    "Do not include absolute or relative source file paths in the answer body."
+  );
   const [darkMode, setDarkMode] = useState<boolean>(false);
-  const [userInfo, setUserInfo] = useState<string>('');
 
   // Track whether saved context files were loaded from backend (non-empty)
   const hadSavedContextRef = useRef(false);
@@ -701,9 +706,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (data.apiKeys) setApiKeys((prev) => ({ ...prev, ...data.apiKeys }));
       if (data.temperature !== undefined) setTemperature(data.temperature);
       if (data.contextSize !== undefined) setContextSize(data.contextSize);
+      if (data.top_k !== undefined) setTopK(data.top_k);
       if (data.systemPrompt !== undefined) setSystemPrompt(data.systemPrompt);
       if (data.darkMode !== undefined) setDarkMode(data.darkMode);
-      if (data.userInfo !== undefined) setUserInfo(data.userInfo);
       if (data.localEndpoint) {
         setLocalEndpoint(data.localEndpoint);
       }
@@ -728,9 +733,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           apiKeys,
           temperature,
           contextSize,
+          top_k: topK,
           systemPrompt,
           darkMode,
-          userInfo,
           localEndpoint,
         }),
       });
@@ -1012,6 +1017,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           selected_files: selectedFiles,
           temperature,
           context_size: contextSize,
+          top_k: topK,
+          system_prompt: systemPrompt,
         }),
       });
 
@@ -1181,6 +1188,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         apiKeys,
         temperature,
         contextSize,
+        topK,
         indexedFiles,
         indexedDirectories,
         excludedFiles,
@@ -1193,7 +1201,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         outdatedFileCount,
         systemPrompt,
         darkMode,
-        userInfo,
         sendMessage,
         setInferenceMode,
         setSelectedModel,
@@ -1207,6 +1214,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setApiKey,
         setTemperature,
         setContextSize,
+        setTopK,
         toggleIndexedFile,
         toggleExcludedFile,
         addIndexedDirectory,
@@ -1217,7 +1225,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         removeExclusionPattern,
         setSystemPrompt,
         setDarkMode,
-        setUserInfo,
         importFolder,
         setWatcherPath,
         browseFolderForWatcher,

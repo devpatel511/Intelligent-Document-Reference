@@ -26,6 +26,7 @@ class QueryRequest(BaseModel):
     temperature: Optional[float] = 0.7
     context_size: Optional[int] = 4096
     top_k: Optional[int] = 5
+    system_prompt: Optional[str] = None
 
 
 @router.get("/status")
@@ -125,6 +126,7 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
             model=request.model,
             temperature=request.temperature,
             context_size=request.context_size,
+            system_prompt=request.system_prompt,
             inference_backend=effective_backend,
             chat_history_context=chat_history_context,
         )
