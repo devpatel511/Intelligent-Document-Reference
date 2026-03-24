@@ -20,7 +20,11 @@ class RAGProcessor:
         """Build a retrieval-augmented prompt with source attributions."""
         # Use custom system prompt if provided, otherwise use default
         system_instruction = system_prompt or (
-            "You are a professional assistant. Use the context below to answer accurately and concisely."
+            "You are a professional assistant. Use the context below to answer "
+            "accurately and concisely.\n"
+            "Return markdown only (headings, bullet lists, tables where helpful).\n"
+            "Do not append source markers in the answer text.\n"
+            "Do not include absolute or relative source file paths in the answer body.\n"
         )
 
         context_str = ""
