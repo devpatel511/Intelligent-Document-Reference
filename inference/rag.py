@@ -71,7 +71,9 @@ class RAGProcessor:
         if chat_history_context:
             system_instruction += f"CONVERSATION HISTORY:\n{chat_history_context}\n\n"
 
-        system_instruction += f"CONTEXT:\n{context_str}\n\n" f"USER QUESTION: {query}\nANSWER:"
+        system_instruction += (
+            f"CONTEXT:\n{context_str}\n\n" f"USER QUESTION: {query}\nANSWER:"
+        )
 
         return system_instruction
 
