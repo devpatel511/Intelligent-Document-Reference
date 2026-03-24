@@ -38,13 +38,13 @@ ALLOWED_KEYS = {
     "contextSize",
     "systemPrompt",
     "darkMode",
-    "userInfo",
     "localEndpoint",
     "embedding_backend",
     "inference_backend",
     "embedding_model",
     "inference_model",
     "embedding_dimension",
+    "top_k",
 }
 
 

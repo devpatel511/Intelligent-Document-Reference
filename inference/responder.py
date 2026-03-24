@@ -61,6 +61,7 @@ class Responder:
         model: Optional[str] = None,
         temperature: Optional[float] = None,
         context_size: Optional[int] = None,
+        system_prompt: Optional[str] = None,
         inference_backend: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Run the full retrieve-then-generate pipeline."""
@@ -92,6 +93,8 @@ class Responder:
             generate_kwargs["model"] = model
         if temperature is not None:
             generate_kwargs["temperature"] = temperature
+        if system_prompt is not None:
+            generate_kwargs["system_prompt"] = system_prompt
 
         if (inference_backend or "").lower() == "local":
             effective_ctx = context_size or 4096
