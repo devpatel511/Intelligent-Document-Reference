@@ -74,7 +74,7 @@ uv run app.py --help
 uv sync --group dev					# install test dependencies
 uv run scripts/cspyformatter.py  	# run formatting
 uv run pytest						# run all tests
-cd ui && npm run build				# build distribution files after UI changes 
+cd ui && npm run build				# rebuild distribution files after UI changes 
 ```
 
 ## Troubleshooting
