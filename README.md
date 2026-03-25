@@ -6,7 +6,10 @@ Local-first RAG app for document ingestion and citation-grounded Q&A.
 - Frontend: React/Vite
 - Storage: SQLite + sqlite-vec
 
-<_insert demo video>
+
+
+https://github.com/user-attachments/assets/5fa9e224-99e0-4cf6-81bc-af78240d5ce1
+
 
 ## Quick Start (Production)
 
