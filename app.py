@@ -814,6 +814,13 @@ def main():
     if args.reset:
         _reset_runtime_state(project_root)
 
+    # Ensure file_indexing.yaml exists (create default template if missing)
+    config_path = project_root / "config" / "file_indexing.yaml"
+    if not config_path.exists():
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(FILE_INDEXING_DEFAULT_CONTENT, encoding="utf-8")
+        print("✓ Created config/file_indexing.yaml with default template")
+
     if args.setup:
         setup_environment()
         # After setup, continue only when another explicit action was requested.
