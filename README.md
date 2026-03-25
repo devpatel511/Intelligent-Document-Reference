@@ -8,7 +8,11 @@ Local-first RAG app for document ingestion and citation-grounded Q&A.
 
 
 
-https://github.com/user-attachments/assets/5fa9e224-99e0-4cf6-81bc-af78240d5ce1
+
+https://github.com/user-attachments/assets/0f393843-5a50-45bc-98cb-ad8d31f009bb
+
+
+
 
 
 ## Quick Start (Production)
