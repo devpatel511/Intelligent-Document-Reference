@@ -27,9 +27,21 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """Start the job worker and file watcher on startup; stop on shutdown."""
+    """Start the job worker and file watcher on startup; stop on shutdown.
+
+    Also clears retrieval cache and chat history on startup.
+    """
     ctx = get_context()
     worker = None
+
+    # Clear caches and history on startup
+    if ctx:
+        if ctx.retrieval_cache:
+            ctx.retrieval_cache.clear()
+            logger.info("Retrieval cache cleared on startup")
+        if ctx.chat_history:
+            ctx.chat_history.clear()
+            logger.info("Chat history cleared on startup")
 
     if ctx and ctx.job_queue:
         poll_interval = getattr(ctx.settings, "worker_poll_interval", 2.0)

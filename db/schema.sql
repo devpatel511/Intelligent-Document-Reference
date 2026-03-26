@@ -97,3 +97,20 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 9. Retrieval Cache Table
+-- Stores past retrieved chunks for semantic similarity deduplication
+-- Backing store for in-memory LRU cache; wiped on app restart
+CREATE TABLE IF NOT EXISTS retrieval_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query_text TEXT NOT NULL,
+    query_embedding BLOB NOT NULL,        -- Binary embedding vector
+    retrieved_chunks_json TEXT NOT NULL,  -- JSON array of cached chunks
+    similarity_score REAL,                -- Cosine distance to most similar cached query
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(query_text)
+);
+
+CREATE INDEX IF NOT EXISTS idx_retrieval_cache_accessed
+    ON retrieval_cache (last_accessed_at DESC);

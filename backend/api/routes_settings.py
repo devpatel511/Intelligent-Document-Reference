@@ -402,6 +402,8 @@ async def update_settings(
                 reindex_required = True
 
         apply_runtime_clients(ctx)
+    if reindex_required:
+        ctx.dirty = True
     return {
         "status": "ok",
         "settings": ctx.settings_store.get_all(),
@@ -490,6 +492,7 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
         paths_to_index.extend(file_indexing_cfg.get("inclusion", {}).get("files", []))
 
     if not paths_to_index:
+        ctx.dirty = True
         return {
             "status": "ok",
             "message": "No paths configured for indexing",
@@ -518,6 +521,8 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
     try:
         indexed_count, errors = await asyncio.to_thread(_run_all_indexing)
 
+        ctx.dirty = True
+
         return {
             "status": "ok",
             "message": f"Reindex completed for {indexed_count} paths (dim={target_dim})",
@@ -528,6 +533,7 @@ async def trigger_reindex(ctx: AppContext = Depends(get_context)):
         }
     finally:
         ctx.reindex_in_progress = False
+        ctx.dirty = True
 
 
 @router.post("/clear-indexes")
@@ -537,6 +543,7 @@ async def clear_indexes(ctx: AppContext = Depends(get_context)):
         raise HTTPException(status_code=503, detail="Database not initialized")
     try:
         removed = ctx.db.clear_all_indexes()
+        ctx.dirty = True
         return {
             "status": "ok",
             "message": f"Cleared all indexes. {removed} file records removed.",

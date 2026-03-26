@@ -19,3 +19,6 @@ class AppContext:
     watcher: Optional[Any] = None
     settings_store: Optional[Any] = None
     reindex_in_progress: bool = False
+    retrieval_cache: Optional[Any] = None  # RetrievalCache instance
+    chat_history: Optional[Any] = None  # ChatHistory instance
+    dirty: bool = False  # Flag set when files are added/deleted, triggers cache clear
