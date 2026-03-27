@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import csv
+import importlib
+import io
 import logging
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -10,6 +13,12 @@ from pathlib import Path
 from typing import Any, BinaryIO, Optional, Union
 
 from ingestion.code_syntax import validate_code_syntax
+from ingestion.extension_registry import (
+    AUDIO_FILE_EXTENSIONS as REGISTRY_AUDIO_FILE_EXTENSIONS,
+    CODE_FILE_EXTENSIONS as REGISTRY_CODE_FILE_EXTENSIONS,
+    IMAGE_FILE_EXTENSIONS as REGISTRY_IMAGE_FILE_EXTENSIONS,
+    SPREADSHEET_FILE_EXTENSIONS,
+)
 from ingestion.models import (
     BlockMetadata,
     BlockType,
@@ -66,66 +75,10 @@ class InputDocument(ABC):
 
 # --- Router ---
 
-# Code, markup-as-code, and machine-readable config (indexed as CODE modality).
-# .md / .rst stay plain TEXT (paragraphs), not code blocks.
-CODE_FILE_EXTENSIONS = frozenset(
-    {
-        ".py",
-        ".js",
-        ".mjs",
-        ".cjs",
-        ".ts",
-        ".tsx",
-        ".jsx",
-        ".java",
-        ".kt",
-        ".go",
-        ".rs",
-        ".rb",
-        ".php",
-        ".swift",
-        ".c",
-        ".cpp",
-        ".h",
-        ".hpp",
-        ".cs",
-        ".scala",
-        ".r",
-        ".sql",
-        ".sh",
-        ".bash",
-        ".yaml",
-        ".yml",
-        ".json",
-        ".toml",
-        ".ini",
-        ".cfg",
-        ".html",
-        ".css",
-        ".scss",
-        ".vue",
-        ".svelte",
-    }
-)
-
-IMAGE_FILE_EXTENSIONS = frozenset(
-    {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
-)
-AUDIO_FILE_EXTENSIONS = frozenset(
-    {
-        ".mp3",
-        ".wav",
-        ".m4a",
-        ".aac",
-        ".flac",
-        ".ogg",
-        ".oga",
-        ".opus",
-        ".webm",
-        ".aiff",
-        ".aif",
-    }
-)
+# Backward-compatible aliases (imported in tests/other modules).
+CODE_FILE_EXTENSIONS = REGISTRY_CODE_FILE_EXTENSIONS
+IMAGE_FILE_EXTENSIONS = REGISTRY_IMAGE_FILE_EXTENSIONS
+AUDIO_FILE_EXTENSIONS = REGISTRY_AUDIO_FILE_EXTENSIONS
 
 
 def get_input_handler(
@@ -143,6 +96,12 @@ def get_input_handler(
             return AudioInput()
         if modality == "code":
             return CodeInput()
+        if modality == "csv":
+            return CSVInput()
+        if modality == "spreadsheet":
+            return SpreadsheetInput()
+        if modality == "docx":
+            return DOCXInput()
         if modality == "text":
             return TextInput()
         return TextInput()
@@ -161,6 +120,12 @@ def get_input_handler(
             return AudioInput()
         if ext in CODE_FILE_EXTENSIONS:
             return CodeInput()
+        if ext == ".csv":
+            return CSVInput()
+        if ext in SPREADSHEET_FILE_EXTENSIONS:
+            return SpreadsheetInput()
+        if ext == ".docx":
+            return DOCXInput()
     return TextInput()
 
 
@@ -194,6 +159,272 @@ class TextInput(InputDocument):
         return StructuredDocument(
             source_id=src.identifier,
             blocks=[block] if block.content else [],
+            source_modality=SourceModality.TEXT,
+        )
+
+
+def _normalize_table_rows(rows: list[list[str]]) -> list[list[str]]:
+    width = max((len(r) for r in rows), default=0)
+    return [r + [""] * (width - len(r)) for r in rows]
+
+
+def _to_markdown_table(header: list[str], rows: list[list[str]]) -> str:
+    safe_header = [h.strip() or "column" for h in header]
+    safe_rows = _normalize_table_rows(rows)
+
+    def _escape_cell(value: str) -> str:
+        return value.replace("|", "\\|").replace("\n", " ").strip()
+
+    header_line = "| " + " | ".join(_escape_cell(h) for h in safe_header) + " |"
+    separator = "| " + " | ".join("---" for _ in safe_header) + " |"
+    body = [
+        "| " + " | ".join(_escape_cell(cell) for cell in row) + " |"
+        for row in safe_rows
+    ]
+    return "\n".join([header_line, separator, *body])
+
+
+class CSVInput(InputDocument):
+    """Parse CSV files into table blocks for retrieval-friendly indexing."""
+
+    _chunk_rows = 100
+
+    def parse(
+        self,
+        source: Union[str, Path, BinaryIO, InputSource],
+        ocr_provider=None,
+        llm_client=None,
+        config=None,
+    ) -> StructuredDocument:
+        src = InputDocument._resolve_source(source)
+        csv_text = (
+            src.path.read_text(encoding="utf-8", errors="replace")
+            if src.path
+            else (
+                src.stream.read().decode("utf-8", errors="replace")
+                if src.stream
+                else ""
+            )
+        )
+        rows = [
+            [str(cell).strip() for cell in row]
+            for row in csv.reader(io.StringIO(csv_text))
+            if any(str(cell).strip() for cell in row)
+        ]
+        if not rows:
+            return StructuredDocument(
+                source_id=src.identifier,
+                blocks=[],
+                source_modality=SourceModality.TEXT,
+            )
+
+        header = rows[0]
+        data_rows = rows[1:]
+        blocks: list[ContentBlock] = []
+        if not data_rows:
+            data_rows = [[]]
+
+        for start in range(0, len(data_rows), self._chunk_rows):
+            chunk_rows = data_rows[start : start + self._chunk_rows]
+            table_md = _to_markdown_table(header, chunk_rows)
+            blocks.append(
+                ContentBlock(
+                    content=table_md,
+                    block_type=BlockType.TABLE,
+                    source_modality=SourceModality.TEXT,
+                    metadata=BlockMetadata(
+                        extraction_method=ExtractionMethod.NATIVE,
+                        section_hierarchy=("csv",),
+                    ),
+                )
+            )
+
+        return StructuredDocument(
+            source_id=src.identifier,
+            blocks=blocks,
+            source_modality=SourceModality.TEXT,
+        )
+
+
+class SpreadsheetInput(InputDocument):
+    """Parse spreadsheet files (.xlsx/.xls) into table blocks."""
+
+    _chunk_rows = 100
+
+    def _read_xlsx_rows(self, src: InputSource) -> list[tuple[str, list[list[str]]]]:
+        try:
+            openpyxl = importlib.import_module("openpyxl")
+            load_workbook = getattr(openpyxl, "load_workbook")
+        except Exception as exc:
+            raise ImportError(
+                "openpyxl is required for .xlsx parsing. Install with: uv add openpyxl"
+            ) from exc
+
+        workbook = (
+            load_workbook(filename=str(src.path), read_only=True, data_only=True)
+            if src.path
+            else load_workbook(
+                filename=io.BytesIO(src.stream.read() if src.stream else b""),
+                read_only=True,
+                data_only=True,
+            )
+        )
+        tables: list[tuple[str, list[list[str]]]] = []
+        for sheet in workbook.worksheets:
+            rows: list[list[str]] = []
+            for row in sheet.iter_rows(values_only=True):
+                text_row = ["" if cell is None else str(cell).strip() for cell in row]
+                if any(text_row):
+                    rows.append(text_row)
+            if rows:
+                tables.append((sheet.title, rows))
+        workbook.close()
+        return tables
+
+    def _read_xls_rows(self, src: InputSource) -> list[tuple[str, list[list[str]]]]:
+        try:
+            xlrd = importlib.import_module("xlrd")
+        except Exception as exc:
+            raise ImportError(
+                "xlrd is required for .xls parsing. Install with: uv add xlrd"
+            ) from exc
+
+        workbook = (
+            xlrd.open_workbook(str(src.path))
+            if src.path
+            else xlrd.open_workbook(file_contents=src.stream.read() if src.stream else b"")
+        )
+        tables: list[tuple[str, list[list[str]]]] = []
+        for sheet in workbook.sheets():
+            rows: list[list[str]] = []
+            for row_idx in range(sheet.nrows):
+                values = [str(cell).strip() for cell in sheet.row_values(row_idx)]
+                if any(values):
+                    rows.append(values)
+            if rows:
+                tables.append((sheet.name, rows))
+        return tables
+
+    def parse(
+        self,
+        source: Union[str, Path, BinaryIO, InputSource],
+        ocr_provider=None,
+        llm_client=None,
+        config=None,
+    ) -> StructuredDocument:
+        src = InputDocument._resolve_source(source)
+        ext = src.path.suffix.lower() if src.path else ".xlsx"
+
+        sheets = (
+            self._read_xls_rows(src) if ext == ".xls" else self._read_xlsx_rows(src)
+        )
+        blocks: list[ContentBlock] = []
+
+        for sheet_name, rows in sheets:
+            header = rows[0]
+            data_rows = rows[1:] if len(rows) > 1 else [[]]
+            for start in range(0, len(data_rows), self._chunk_rows):
+                chunk_rows = data_rows[start : start + self._chunk_rows]
+                table_md = _to_markdown_table(header, chunk_rows)
+                blocks.append(
+                    ContentBlock(
+                        content=table_md,
+                        block_type=BlockType.TABLE,
+                        source_modality=SourceModality.TEXT,
+                        metadata=BlockMetadata(
+                            extraction_method=ExtractionMethod.NATIVE,
+                            section_hierarchy=("spreadsheet", sheet_name),
+                        ),
+                    )
+                )
+
+        return StructuredDocument(
+            source_id=src.identifier,
+            blocks=blocks,
+            source_modality=SourceModality.TEXT,
+        )
+
+
+class DOCXInput(InputDocument):
+    """Parse DOCX documents into heading, paragraph, and table blocks."""
+
+    def parse(
+        self,
+        source: Union[str, Path, BinaryIO, InputSource],
+        ocr_provider=None,
+        llm_client=None,
+        config=None,
+    ) -> StructuredDocument:
+        try:
+            docx_module = importlib.import_module("docx")
+            document_factory = getattr(docx_module, "Document")
+        except Exception as exc:
+            raise ImportError(
+                "python-docx is required for .docx parsing. Install with: uv add python-docx"
+            ) from exc
+
+        src = InputDocument._resolve_source(source)
+        document = (
+            document_factory(str(src.path))
+            if src.path
+            else document_factory(io.BytesIO(src.stream.read() if src.stream else b""))
+        )
+
+        blocks: list[ContentBlock] = []
+        headings: list[str] = []
+
+        for paragraph in document.paragraphs:
+            text = (paragraph.text or "").strip()
+            if not text:
+                continue
+            style_name = (paragraph.style.name if paragraph.style else "") or ""
+            is_heading = style_name.startswith("Heading")
+            if is_heading:
+                level = 1
+                tail = style_name.replace("Heading", "").strip()
+                if tail.isdigit():
+                    level = max(1, int(tail))
+                if len(headings) >= level:
+                    headings = headings[: level - 1]
+                headings.append(text)
+
+            blocks.append(
+                ContentBlock(
+                    content=text,
+                    block_type=BlockType.HEADING if is_heading else BlockType.PARAGRAPH,
+                    source_modality=SourceModality.TEXT,
+                    metadata=BlockMetadata(
+                        extraction_method=ExtractionMethod.NATIVE,
+                        section_hierarchy=tuple(headings),
+                    ),
+                )
+            )
+
+        for table in document.tables:
+            table_rows = []
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                if any(cells):
+                    table_rows.append(cells)
+            if not table_rows:
+                continue
+            header = table_rows[0]
+            data_rows = table_rows[1:] if len(table_rows) > 1 else [[]]
+            blocks.append(
+                ContentBlock(
+                    content=_to_markdown_table(header, data_rows),
+                    block_type=BlockType.TABLE,
+                    source_modality=SourceModality.TEXT,
+                    metadata=BlockMetadata(
+                        extraction_method=ExtractionMethod.NATIVE,
+                        section_hierarchy=tuple(headings),
+                    ),
+                )
+            )
+
+        return StructuredDocument(
+            source_id=src.identifier,
+            blocks=blocks,
             source_modality=SourceModality.TEXT,
         )
 

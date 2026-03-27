@@ -6,10 +6,14 @@ import pytest
 
 from ingestion import (
     AudioInput,
+    CSVInput,
     CodeInput,
+    DOCXInput,
     IngestionConfig,
+    SpreadsheetInput,
     TextInput,
     get_input_handler,
+    is_supported_path,
     parse_and_prepare,
 )
 from ingestion.code_syntax import CodeSyntaxError
@@ -58,6 +62,10 @@ def test_get_input_handler_selects_by_extension() -> None:
     assert type(get_input_handler("x.txt")).__name__ == "TextInput"
     assert type(get_input_handler("x.md")).__name__ == "TextInput"
     assert type(get_input_handler("x.rst")).__name__ == "TextInput"
+    assert type(get_input_handler("x.csv")).__name__ == "CSVInput"
+    assert type(get_input_handler("x.xlsx")).__name__ == "SpreadsheetInput"
+    assert type(get_input_handler("x.xls")).__name__ == "SpreadsheetInput"
+    assert type(get_input_handler("x.docx")).__name__ == "DOCXInput"
 
 
 def test_code_input_rejects_invalid_python(tmp_path: Path) -> None:
@@ -109,6 +117,67 @@ def test_audio_input_transcribes_mp3(tmp_path: Path) -> None:
     assert doc.blocks[0].content == "hello from audio"
     assert doc.blocks[0].block_type == BlockType.PARAGRAPH
     assert doc.blocks[0].metadata.extraction_method == ExtractionMethod.LLM_ASSISTED
+
+
+def test_csv_input_parses_table_blocks(tmp_path: Path) -> None:
+    """CSVInput preserves tabular structure as table blocks."""
+    f = tmp_path / "metrics.csv"
+    f.write_text("name,value\nlatency,22\nthroughput,108", encoding="utf-8")
+
+    doc = parse_and_prepare(CSVInput(), str(f), config=IngestionConfig())
+    assert doc.source_modality == SourceModality.TEXT
+    assert len(doc.blocks) == 1
+    assert doc.blocks[0].block_type == BlockType.TABLE
+    assert "| name | value |" in doc.blocks[0].content
+    assert "latency" in doc.blocks[0].content
+
+
+def test_spreadsheet_input_parses_xlsx(tmp_path: Path) -> None:
+    """SpreadsheetInput parses .xlsx sheets into table blocks."""
+    openpyxl = pytest.importorskip("openpyxl")
+    f = tmp_path / "report.xlsx"
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Summary"
+    ws.append(["Metric", "Value"])
+    ws.append(["Errors", 3])
+    wb.save(f)
+
+    doc = parse_and_prepare(SpreadsheetInput(), str(f), config=IngestionConfig())
+    assert doc.source_modality == SourceModality.TEXT
+    assert len(doc.blocks) >= 1
+    assert doc.blocks[0].block_type == BlockType.TABLE
+    assert "Summary" in doc.blocks[0].metadata.section_hierarchy
+
+
+def test_docx_input_parses_text_and_tables(tmp_path: Path) -> None:
+    """DOCXInput extracts headings, paragraphs, and tables."""
+    docx = pytest.importorskip("docx")
+    f = tmp_path / "brief.docx"
+
+    d = docx.Document()
+    d.add_heading("Quarterly Update", level=1)
+    d.add_paragraph("Revenue increased quarter over quarter.")
+    table = d.add_table(rows=2, cols=2)
+    table.rows[0].cells[0].text = "Metric"
+    table.rows[0].cells[1].text = "Value"
+    table.rows[1].cells[0].text = "Revenue"
+    table.rows[1].cells[1].text = "$10M"
+    d.save(f)
+
+    parsed = parse_and_prepare(DOCXInput(), str(f), config=IngestionConfig())
+    assert parsed.source_modality == SourceModality.TEXT
+    assert any(block.block_type == BlockType.HEADING for block in parsed.blocks)
+    assert any(block.block_type == BlockType.TABLE for block in parsed.blocks)
+
+
+def test_extensionless_allowlist_supported() -> None:
+    """Allowlisted extensionless files are considered supported."""
+    assert is_supported_path(Path("Dockerfile")) is True
+    assert is_supported_path(Path(".env")) is True
+    assert is_supported_path(Path("README")) is True
+    assert is_supported_path(Path("notes")) is False
 
 
 def test_preprocessing_normalizes_whitespace() -> None:

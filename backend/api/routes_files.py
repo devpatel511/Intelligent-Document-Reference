@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from backend.deps import get_context
 from core.context import AppContext
+from ingestion.extension_registry import is_supported_path
 
 try:
     from watcher.core.database import FileRegistry
@@ -135,8 +136,7 @@ def _sync_watcher_to_inclusion(
             registry.upsert_file(full_path, path_obj.stat().st_mtime)
             # Immediately schedule indexing for newly-added files
             if scheduler and full_path not in existing_paths:
-                ext = path_obj.suffix.lower()
-                if ext in sup_exts:
+                if is_supported_path(path_obj, sup_exts):
                     try:
                         scheduler.schedule(full_path, source="ui")
                         logger.info("Scheduled indexing for file: %s", full_path)
@@ -153,10 +153,12 @@ def _schedule_directory(
     """Walk a directory and schedule an indexing job for each supported file."""
     for root, _dirs, filenames in os.walk(dir_path):
         for name in filenames:
-            if name.startswith("."):
+            candidate = Path(root) / name
+            if name.startswith(".") and not is_supported_path(
+                candidate, supported_extensions
+            ):
                 continue
-            ext = os.path.splitext(name)[1].lower()
-            if ext not in supported_extensions:
+            if not is_supported_path(candidate, supported_extensions):
                 continue
             fp = os.path.join(root, name)
             try:
@@ -275,7 +277,7 @@ def build_file_tree(
     nodes = []
     try:
         for item in sorted(full_path.iterdir()):
-            if item.name.startswith("."):
+            if item.name.startswith(".") and not is_supported_path(item, sup_exts):
                 continue
 
             abs_path = str(item.resolve())
@@ -309,8 +311,7 @@ def build_file_tree(
                     node["children"] = children
             else:
                 # Determine file status for the UI
-                ext = item.suffix.lower()
-                if sup_exts and ext not in sup_exts:
+                if sup_exts and not is_supported_path(item, sup_exts):
                     node["status"] = "unsupported"
                 elif abs_path in statuses:
                     db_status = statuses[abs_path]
@@ -427,8 +428,7 @@ async def list_files(ctx: AppContext = Depends(get_context)):
         ):
             continue
 
-        ext = p.suffix.lower()
-        if supported_extensions and ext not in supported_extensions:
+        if supported_extensions and not is_supported_path(p, supported_extensions):
             status = "unsupported"
         elif abs_path in file_statuses:
             db_status = file_statuses[abs_path]
