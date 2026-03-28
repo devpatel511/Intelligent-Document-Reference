@@ -74,7 +74,9 @@ interface ChatContextType {
   systemPrompt: string;
   darkMode: boolean;
   sendMessage: (content: string) => Promise<void>;
-  /** Clear conversation and reset loading state (start fresh). */
+  /** Abort the in-flight /chat/query request (no assistant message appended). */
+  stopQuery: () => void;
+  /** Clear the conversation and cancel any in-flight query. */
   newChat: () => void;
   setInferenceMode: (mode: InferenceMode) => void;
   setSelectedModel: (model: ModelType) => void;
@@ -241,6 +243,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
   const embeddingDimsInFlightRef = useRef(new Map<string, Promise<number[]>>());
   const embeddingDimsLastFetchRef = useRef(new Map<string, number>());
+  const chatQueryAbortRef = useRef<AbortController | null>(null);
   // Check pipeline readiness from backend
   const checkPipelineStatus = async () => {
     try {
@@ -1003,6 +1006,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const stopQuery = () => {
+    chatQueryAbortRef.current?.abort();
+  };
+
+  const newChat = () => {
+    chatQueryAbortRef.current?.abort();
+    chatQueryAbortRef.current = null;
+    setMessages([]);
+    setIsLoading(false);
+  };
+
   const sendMessage = async (content: string) => {
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
@@ -1011,8 +1025,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       timestamp: new Date(),
     };
 
+    chatQueryAbortRef.current?.abort();
+    const ac = new AbortController();
+    chatQueryAbortRef.current = ac;
+
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+
+    const isAbortError = (e: unknown) =>
+      (e instanceof DOMException && e.name === 'AbortError') ||
+      (e instanceof Error && e.name === 'AbortError');
 
     try {
       const response = await fetch(`${API_BASE_URL}/chat/query`, {
@@ -1020,6 +1042,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: ac.signal,
         body: JSON.stringify({
           query: content,
           model: selectedModel,
@@ -1039,7 +1062,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await response.json();
-      
+
       const assistantMessage: Message = {
         id: `msg-${Date.now() + 1}`,
         role: 'assistant',
@@ -1053,6 +1076,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
+      if (isAbortError(error)) {
+        // User stopped or request was superseded; do not append an error bubble.
+        return;
+      }
       console.error('Failed to send message:', error);
       const detail = error instanceof Error ? error.message : 'Unknown error';
       const errorMessage: Message = {
@@ -1063,13 +1090,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      if (chatQueryAbortRef.current === ac) {
+        chatQueryAbortRef.current = null;
+        setIsLoading(false);
+      }
     }
-  };
-
-  const newChat = () => {
-    setMessages([]);
-    setIsLoading(false);
   };
 
   const toggleFileSelection = (path: string) => {
@@ -1218,6 +1243,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         systemPrompt,
         darkMode,
         sendMessage,
+        stopQuery,
         newChat,
         setInferenceMode,
         setSelectedModel,

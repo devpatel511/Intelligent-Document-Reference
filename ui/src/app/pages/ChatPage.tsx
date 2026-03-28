@@ -88,7 +88,7 @@ export function ChatPage() {
               size="sm"
               onClick={() => newChat()}
               className="cursor-pointer"
-              title="Clear messages and start a new conversation"
+              title="Clear messages and start over"
             >
               <MessageSquarePlus className="h-4 w-4 mr-2" />
               New chat
