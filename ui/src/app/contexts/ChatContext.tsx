@@ -74,6 +74,8 @@ interface ChatContextType {
   systemPrompt: string;
   darkMode: boolean;
   sendMessage: (content: string) => Promise<void>;
+  /** Clear conversation and reset loading state (start fresh). */
+  newChat: () => void;
   setInferenceMode: (mode: InferenceMode) => void;
   setSelectedModel: (model: ModelType) => void;
   toggleFileSelection: (path: string) => void;
@@ -1065,6 +1067,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const newChat = () => {
+    setMessages([]);
+    setIsLoading(false);
+  };
+
   const toggleFileSelection = (path: string) => {
     setSelectedFiles((prev) =>
       prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]
@@ -1211,6 +1218,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         systemPrompt,
         darkMode,
         sendMessage,
+        newChat,
         setInferenceMode,
         setSelectedModel,
         toggleFileSelection,
