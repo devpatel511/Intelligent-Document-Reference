@@ -194,8 +194,8 @@ def test_spreadsheet_input_fills_blank_headers(tmp_path: Path) -> None:
     assert "January_2" in summary.content or "column_" in summary.content
 
 
-def test_spreadsheet_input_extracts_side_panel_distribution(tmp_path: Path) -> None:
-    """SpreadsheetInput includes distribution percentages from side-panel columns."""
+def test_spreadsheet_input_extracts_generic_side_panel_values(tmp_path: Path) -> None:
+    """SpreadsheetInput includes generic adjacent-context numeric and ratio values."""
     openpyxl = pytest.importorskip("openpyxl")
     f = tmp_path / "distribution_panel.xlsx"
 
@@ -221,9 +221,9 @@ def test_spreadsheet_input_extracts_side_panel_distribution(tmp_path: Path) -> N
         if block.block_type == BlockType.PARAGRAPH
         and "Table scope: spreadsheet > TEMPLATE:JanExpenses" in block.content
     )
-    assert "Distribution percentages (side panel):" in summary.content
-    assert "Essential=45.0%" in summary.content
-    assert "Income entries (side panel):" in summary.content
+    assert "Adjacent ratio values:" in summary.content
+    assert "Essential (c2)=45.0%" in summary.content
+    assert "Adjacent numeric/text context:" in summary.content
 
 
 def test_docx_input_parses_text_and_tables(tmp_path: Path) -> None:

@@ -89,8 +89,6 @@ EXTENSIONLESS_TEXT_FILENAMES = frozenset(
         "procfile",
         "gemfile",
         "rakefile",
-        ".env",
-        ".env.local",
         "license",
         "readme",
         "changelog",
