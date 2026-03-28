@@ -15,6 +15,12 @@ from ingestion.chunking import (
 )
 from ingestion.config import IngestionConfig
 from ingestion.crawler import DiscoveredFile, crawl_directory
+from ingestion.extension_registry import (
+    EXTENSIONLESS_TEXT_FILENAMES,
+    SUPPORTED_FILE_EXTENSIONS,
+    is_extensionless_text_filename,
+    is_supported_path,
+)
 from ingestion.models import (
     BlockMetadata,
     BlockType,
@@ -30,8 +36,8 @@ from ingestion.ocr import OCRProvider, OCRResult, TesseractOCRProvider
 from ingestion.orchestrator import parse_and_prepare, parse_and_prepare_batch
 from ingestion.parser import (
     AudioInput,
-    CSVInput,
     CodeInput,
+    CSVInput,
     DOCXInput,
     ImageInput,
     InputDocument,
@@ -40,12 +46,6 @@ from ingestion.parser import (
     SpreadsheetInput,
     TextInput,
     get_input_handler,
-)
-from ingestion.extension_registry import (
-    EXTENSIONLESS_TEXT_FILENAMES,
-    SUPPORTED_FILE_EXTENSIONS,
-    is_extensionless_text_filename,
-    is_supported_path,
 )
 from ingestion.pipeline import (
     IngestionOutput,

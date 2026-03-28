@@ -6,8 +6,8 @@ import pytest
 
 from ingestion import (
     AudioInput,
-    CSVInput,
     CodeInput,
+    CSVInput,
     DOCXInput,
     IngestionConfig,
     SpreadsheetInput,
@@ -126,10 +126,25 @@ def test_csv_input_parses_table_blocks(tmp_path: Path) -> None:
 
     doc = parse_and_prepare(CSVInput(), str(f), config=IngestionConfig())
     assert doc.source_modality == SourceModality.TEXT
-    assert len(doc.blocks) == 1
-    assert doc.blocks[0].block_type == BlockType.TABLE
-    assert "| name | value |" in doc.blocks[0].content
-    assert "latency" in doc.blocks[0].content
+    assert len(doc.blocks) >= 2
+    assert doc.blocks[0].block_type == BlockType.PARAGRAPH
+    assert "Table columns: name, value" in doc.blocks[0].content
+    assert "Last row -> Row 2: name=throughput; value=108" in doc.blocks[0].content
+    assert doc.blocks[1].block_type == BlockType.TABLE
+    assert "Row 1: name=latency; value=22" in doc.blocks[1].content
+
+
+def test_csv_pipe_delimited_parses_columns(tmp_path: Path) -> None:
+    """CSVInput detects and parses pipe-delimited files."""
+    f = tmp_path / "metrics_pipe.csv"
+    f.write_text(
+        "metric|value|unit\nlatency|22|ms\nthroughput|108|rps", encoding="utf-8"
+    )
+
+    doc = parse_and_prepare(CSVInput(), str(f), config=IngestionConfig())
+    assert len(doc.blocks) >= 2
+    assert "Table columns: metric, value, unit" in doc.blocks[0].content
+    assert "Row 1: metric=latency; value=22; unit=ms" in doc.blocks[1].content
 
 
 def test_spreadsheet_input_parses_xlsx(tmp_path: Path) -> None:
@@ -146,9 +161,69 @@ def test_spreadsheet_input_parses_xlsx(tmp_path: Path) -> None:
 
     doc = parse_and_prepare(SpreadsheetInput(), str(f), config=IngestionConfig())
     assert doc.source_modality == SourceModality.TEXT
-    assert len(doc.blocks) >= 1
-    assert doc.blocks[0].block_type == BlockType.TABLE
-    assert "Summary" in doc.blocks[0].metadata.section_hierarchy
+    assert len(doc.blocks) >= 2
+    assert doc.blocks[0].block_type == BlockType.PARAGRAPH
+    table_block = next(
+        block for block in doc.blocks if block.block_type == BlockType.TABLE
+    )
+    assert "Summary:sheet" in table_block.metadata.section_hierarchy
+    assert "Rows 1-1" in table_block.content
+
+
+def test_spreadsheet_input_fills_blank_headers(tmp_path: Path) -> None:
+    """SpreadsheetInput normalizes blank/duplicate headers into stable keys."""
+    openpyxl = pytest.importorskip("openpyxl")
+    f = tmp_path / "blank_headers.xlsx"
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Budget"
+    ws.append(["January", "", "", "March"])
+    ws.append(["Income", "Item", "Category", "Income"])
+    ws.append(["Bi-weekly", "Salary", "Essential", "Bonus"])
+    wb.save(f)
+
+    doc = parse_and_prepare(SpreadsheetInput(), str(f), config=IngestionConfig())
+    assert any("Table columns:" in block.content for block in doc.blocks)
+    summary = next(
+        block
+        for block in doc.blocks
+        if block.block_type == BlockType.PARAGRAPH and "Table columns:" in block.content
+    )
+    assert "January" in summary.content
+    assert "January_2" in summary.content or "column_" in summary.content
+
+
+def test_spreadsheet_input_extracts_side_panel_distribution(tmp_path: Path) -> None:
+    """SpreadsheetInput includes distribution percentages from side-panel columns."""
+    openpyxl = pytest.importorskip("openpyxl")
+    f = tmp_path / "distribution_panel.xlsx"
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "TEMPLATE"
+    ws.append(["January", "", "", "", "", "", "", "", ""])
+    ws.append(["Income", "", "", "", "", "Item", "Category", "Price", "Date"])
+    ws.append(["Bi-weekly", 1000, "", "", "", "Rent", "Essential", 450, "2026-01-01"])
+    ws.append(["Distribution", "", "", "", "", "Gas", "Essential", 120, "2026-01-02"])
+    ws.append(["Essential", 0.45, 570, 450, "", "Gift", "Donation", 50, "2026-01-03"])
+    ws.append(["Donation", 0.05, 520, 50, "", "Transfer", "Saving", 200, "2026-01-04"])
+    ws.append(["Saving", 0.20, 320, 200, "", "Investment", "Liquid", 300, "2026-01-05"])
+    ws.append(["Liquid", 0.30, 20, 300, "", "", "", "", ""])
+    tab = openpyxl.worksheet.table.Table(displayName="JanExpenses", ref="F2:I8")
+    ws.add_table(tab)
+    wb.save(f)
+
+    doc = parse_and_prepare(SpreadsheetInput(), str(f), config=IngestionConfig())
+    summary = next(
+        block
+        for block in doc.blocks
+        if block.block_type == BlockType.PARAGRAPH
+        and "Table scope: spreadsheet > TEMPLATE:JanExpenses" in block.content
+    )
+    assert "Distribution percentages (side panel):" in summary.content
+    assert "Essential=45.0%" in summary.content
+    assert "Income entries (side panel):" in summary.content
 
 
 def test_docx_input_parses_text_and_tables(tmp_path: Path) -> None:
@@ -170,6 +245,42 @@ def test_docx_input_parses_text_and_tables(tmp_path: Path) -> None:
     assert parsed.source_modality == SourceModality.TEXT
     assert any(block.block_type == BlockType.HEADING for block in parsed.blocks)
     assert any(block.block_type == BlockType.TABLE for block in parsed.blocks)
+
+
+def test_docx_input_extracts_embedded_image_text(tmp_path: Path) -> None:
+    """DOCXInput reuses image parsing path for embedded images."""
+    docx = pytest.importorskip("docx")
+    pil_image = pytest.importorskip("PIL.Image")
+
+    image_path = tmp_path / "inline.png"
+    img = pil_image.new("RGB", (24, 24), color=(220, 10, 10))
+    img.save(image_path)
+
+    f = tmp_path / "with_image.docx"
+    d = docx.Document()
+    d.add_heading("Image Section", level=1)
+    d.add_picture(str(image_path))
+    d.save(f)
+
+    class _VisionClient:
+        def supports_image_input(self):
+            return True
+
+        def describe_image(self, _image, prompt=None):
+            return "Embedded architecture diagram" if prompt is None else "architecture"
+
+    parsed = parse_and_prepare(
+        DOCXInput(),
+        str(f),
+        config=IngestionConfig(use_vision_for_images=True),
+        llm_client=_VisionClient(),
+    )
+
+    assert any(
+        block.block_type == BlockType.IMAGE_TEXT
+        and "architecture" in block.content.lower()
+        for block in parsed.blocks
+    )
 
 
 def test_extensionless_allowlist_supported() -> None:
