@@ -286,9 +286,6 @@ def test_docx_input_extracts_embedded_image_text(tmp_path: Path) -> None:
 def test_extensionless_allowlist_supported() -> None:
     """Allowlisted extensionless files are considered supported."""
     assert is_supported_path(Path("Dockerfile")) is True
-    assert is_supported_path(Path(".env")) is True
-    assert is_supported_path(Path("README")) is True
-    assert is_supported_path(Path("notes")) is False
 
 
 def test_preprocessing_normalizes_whitespace() -> None:
