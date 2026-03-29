@@ -174,6 +174,64 @@ def _normalize_table_rows(rows: list[list[str]]) -> list[list[str]]:
     return [r + [""] * (width - len(r)) for r in rows]
 
 
+def _trim_trailing_empty_cells(row: list[str]) -> list[str]:
+    end = len(row)
+    while end > 0 and not row[end - 1].strip():
+        end -= 1
+    return row[:end]
+
+
+def _count_non_empty_cells(row: list[str]) -> int:
+    return sum(1 for cell in row if cell.strip())
+
+
+def _prepare_tabular_rows(rows: list[list[str]]) -> list[list[str]]:
+    prepared: list[list[str]] = []
+    for row in rows:
+        trimmed = _trim_trailing_empty_cells(row)
+        if any(cell.strip() for cell in trimmed):
+            prepared.append(trimmed)
+    return prepared
+
+
+def _split_tabular_sections(
+    rows: list[list[str]],
+    *,
+    max_blank_gap: int = 1,
+    min_rows: int = 2,
+) -> list[list[list[str]]]:
+    sections: list[list[list[str]]] = []
+    current: list[list[str]] = []
+    blank_run = 0
+
+    for raw_row in rows:
+        row = _trim_trailing_empty_cells(raw_row)
+        if not any(cell.strip() for cell in row):
+            blank_run += 1
+            if current and blank_run >= max_blank_gap:
+                sections.append(current)
+                current = []
+            continue
+
+        blank_run = 0
+        current.append(row)
+
+    if current:
+        sections.append(current)
+
+    filtered = [
+        section
+        for section in sections
+        if len(section) >= min_rows
+        and any(_count_non_empty_cells(row) >= 2 for row in section)
+    ]
+    if filtered:
+        return filtered
+
+    fallback = _prepare_tabular_rows(rows)
+    return [fallback] if fallback else []
+
+
 def _to_markdown_table(header: list[str], rows: list[list[str]]) -> str:
     safe_header = [h.strip() or "column" for h in header]
     safe_rows = _normalize_table_rows(rows)
@@ -212,47 +270,71 @@ def _is_numeric_like(value: str) -> bool:
 
 
 def _split_tabular_rows(rows: list[list[str]]) -> tuple[list[str], list[list[str]]]:
-    normalized = _normalize_table_rows(rows)
+    prepared = _prepare_tabular_rows(rows)
+    normalized = _normalize_table_rows(prepared)
     if not normalized:
         return [], []
 
-    first = normalized[0]
-    non_empty = [cell for cell in first if cell.strip()]
-    unique_ratio = (
-        len({cell.strip().lower() for cell in non_empty}) / float(len(non_empty))
-        if non_empty
-        else 0.0
-    )
-    numeric_ratio = (
-        sum(1 for cell in non_empty if _is_numeric_like(cell)) / float(len(non_empty))
-        if non_empty
-        else 1.0
-    )
-    header_like = bool(non_empty) and unique_ratio >= 0.7 and numeric_ratio < 0.6
+    candidate_limit = min(8, len(normalized))
+    best_header_idx: Optional[int] = None
+    best_score = -1.0
 
-    if header_like:
-        header = first
-        data = normalized[1:]
+    for idx in range(candidate_limit):
+        if idx >= len(normalized) - 1:
+            continue
+
+        row = normalized[idx]
+        non_empty = [cell for cell in row if cell.strip()]
+        count = len(non_empty)
+        if count < 2:
+            continue
+
+        unique_ratio = len({cell.strip().lower() for cell in non_empty}) / float(count)
+        numeric_ratio = sum(1 for cell in non_empty if _is_numeric_like(cell)) / float(
+            count
+        )
+        text_ratio = 1.0 - numeric_ratio
+
+        next_count = count
+        if idx + 1 < len(normalized):
+            next_count = max(1, _count_non_empty_cells(normalized[idx + 1]))
+        continuation = min(1.0, next_count / float(max(1, count)))
+        density = count / float(max(1, len(row)))
+        width_bonus = min(1.0, count / 6.0)
+
+        score = (
+            0.40 * text_ratio
+            + 0.25 * unique_ratio
+            + 0.20 * continuation
+            + 0.10 * width_bonus
+            + 0.05 * density
+        )
+        if score > best_score:
+            best_score = score
+            best_header_idx = idx
+
+    if best_header_idx is not None and best_score >= 0.52:
+        header = normalized[best_header_idx]
+        data = normalized[best_header_idx + 1 :]
     else:
-        width = len(first) if first else 1
+        width = max((len(row) for row in normalized), default=1)
         header = [f"column_{idx + 1}" for idx in range(width)]
         data = normalized
 
     cleaned_header: list[str] = []
-    last_non_empty = ""
     seen: dict[str, int] = {}
     for idx, raw in enumerate(header, start=1):
         candidate = raw.strip() if raw else ""
         if not candidate:
-            candidate = last_non_empty or f"column_{idx}"
-        last_non_empty = candidate
+            candidate = f"column_{idx}"
 
         key = candidate.lower()
         count = seen.get(key, 0) + 1
         seen[key] = count
         cleaned_header.append(candidate if count == 1 else f"{candidate}_{count}")
 
-    return cleaned_header, data
+    prepared_data = _prepare_tabular_rows(data)
+    return cleaned_header, prepared_data
 
 
 def _row_as_context_line(header: list[str], row: list[str], row_number: int) -> str:
@@ -611,9 +693,8 @@ class SpreadsheetInput(InputDocument):
             rows = []
             for row in sheet.iter_rows(values_only=True):
                 text_row = ["" if cell is None else str(cell).strip() for cell in row]
-                if any(text_row):
-                    rows.append(text_row)
-            if rows:
+                rows.append(text_row)
+            if any(any(cell.strip() for cell in row) for row in rows):
                 tables.append((sheet.title, "sheet", rows, []))
         workbook.close()
         return sheet_names, tables
@@ -642,9 +723,8 @@ class SpreadsheetInput(InputDocument):
             rows: list[list[str]] = []
             for row_idx in range(sheet.nrows):
                 values = [str(cell).strip() for cell in sheet.row_values(row_idx)]
-                if any(values):
-                    rows.append(values)
-            if rows:
+                rows.append(values)
+            if any(any(cell.strip() for cell in row) for row in rows):
                 tables.append((sheet.name, "sheet", rows, []))
         return sheet_names, tables
 
@@ -666,24 +746,57 @@ class SpreadsheetInput(InputDocument):
 
         for sheet_name, table_name, rows, sidecar_lines in sheets:
             scope = f"{sheet_name}:{table_name}"
-            table_scopes.append(scope)
+            section_rows_list = _split_tabular_sections(rows)
+            if not section_rows_list:
+                continue
 
-            header, data_rows = _split_tabular_rows(rows)
-            profile_lines = _table_profile_lines(header, data_rows)
+            if len(section_rows_list) > 1:
+                section_lines = [f"Sheet section count: {len(section_rows_list)}"]
+                section_lines.append(f"Sheet scope: {scope}")
+                for idx, section_rows in enumerate(section_rows_list, start=1):
+                    first_row = section_rows[0] if section_rows else []
+                    preview_cells = [cell.strip() for cell in first_row if cell.strip()]
+                    preview = (
+                        " | ".join(preview_cells[:4]) if preview_cells else "(no title)"
+                    )
+                    if len(preview) > 160:
+                        preview = preview[:157] + "..."
+                    section_lines.append(f"- section_{idx} preview: {preview}")
 
-            summary_blocks = _build_tabular_blocks(
-                source_modality=SourceModality.TEXT,
-                rows=rows,
-                section_hierarchy=("spreadsheet", scope),
-                chunk_rows=self._chunk_rows,
-            )
+                blocks.append(
+                    ContentBlock(
+                        content="\n".join(section_lines),
+                        block_type=BlockType.PARAGRAPH,
+                        source_modality=SourceModality.TEXT,
+                        metadata=BlockMetadata(
+                            extraction_method=ExtractionMethod.NATIVE,
+                            section_hierarchy=("spreadsheet", scope, "sections"),
+                        ),
+                    )
+                )
 
-            if summary_blocks and profile_lines:
-                summary_blocks[0].content += "\n" + "\n".join(profile_lines)
-            if summary_blocks and sidecar_lines:
-                summary_blocks[0].content += "\n" + "\n".join(sidecar_lines)
+            for idx, section_rows in enumerate(section_rows_list, start=1):
+                section_scope = (
+                    scope if len(section_rows_list) == 1 else f"{scope}#section_{idx}"
+                )
+                table_scopes.append(section_scope)
 
-            blocks.extend(summary_blocks)
+                header, data_rows = _split_tabular_rows(section_rows)
+                profile_lines = _table_profile_lines(header, data_rows)
+
+                summary_blocks = _build_tabular_blocks(
+                    source_modality=SourceModality.TEXT,
+                    rows=section_rows,
+                    section_hierarchy=("spreadsheet", section_scope),
+                    chunk_rows=self._chunk_rows,
+                )
+
+                if summary_blocks and profile_lines:
+                    summary_blocks[0].content += "\n" + "\n".join(profile_lines)
+                if summary_blocks and idx == 1 and sidecar_lines:
+                    summary_blocks[0].content += "\n" + "\n".join(sidecar_lines)
+
+                blocks.extend(summary_blocks)
 
         blocks.insert(
             0,

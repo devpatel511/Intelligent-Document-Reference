@@ -226,6 +226,48 @@ def test_spreadsheet_input_extracts_generic_side_panel_values(tmp_path: Path) ->
     assert "Adjacent numeric/text context:" in summary.content
 
 
+def test_spreadsheet_input_splits_sections_and_detects_real_header(
+    tmp_path: Path,
+) -> None:
+    """SpreadsheetInput splits sparse report sheets and avoids title-only headers."""
+    openpyxl = pytest.importorskip("openpyxl")
+    f = tmp_path / "multi_section_report.xlsx"
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet2"
+    ws.append(["Vessel Name : GFS PERFECT - GFPT0065E - Discharge List", "", "", ""])
+    ws.append(["Line", "POL", "Status", "Total"])
+    ws.append(["BFM", "SAJED", "I/FCL", 1])
+    ws.append(["", "", "", ""])
+    ws.append(["Discharge special containers Summary", "", "", ""])
+    ws.append(["Line", "Special", "Total", "Teus"])
+    ws.append(["BFM", "DG", 0, 0])
+    wb.save(f)
+
+    doc = parse_and_prepare(SpreadsheetInput(), str(f), config=IngestionConfig())
+
+    section_block = next(
+        block
+        for block in doc.blocks
+        if block.block_type == BlockType.PARAGRAPH
+        and "Sheet section count:" in block.content
+    )
+    assert "Sheet section count: 2" in section_block.content
+
+    summaries = [
+        block
+        for block in doc.blocks
+        if block.block_type == BlockType.PARAGRAPH and "Table columns:" in block.content
+    ]
+    assert any(
+        "Table columns: Line, POL, Status, Total" in b.content for b in summaries
+    )
+    assert any(
+        "Table columns: Line, Special, Total, Teus" in b.content for b in summaries
+    )
+
+
 def test_docx_input_parses_text_and_tables(tmp_path: Path) -> None:
     """DOCXInput extracts headings, paragraphs, and tables."""
     docx = pytest.importorskip("docx")
