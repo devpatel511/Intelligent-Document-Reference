@@ -72,9 +72,9 @@ DOCUMENT_FILE_EXTENSIONS = frozenset(
         ".txt",
         ".md",
         ".rst",
-        ".csv",
-        ".xlsx",
-        ".xls",
+        ".csv",  # NOTE: RAG embeddings are not the best for csv style tabular data, hence you may experience some inconsistencies in retrieval results.
+        ".xlsx",  # NOTE: RAG embeddings are not the best for spreadsheet style data, hence you may experience some inconsistencies in retrieval results.
+        ".xls",  # NOTE RAG embeddings are not the best for spreadsheet style data, hence you may experience some inconsistencies in retrieval results.
         ".docx",
     }
 )

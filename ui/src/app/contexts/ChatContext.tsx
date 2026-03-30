@@ -740,6 +740,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }),
       });
       const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail =
+          typeof data?.detail === 'string' && data.detail.trim().length > 0
+            ? data.detail
+            : `Failed to save settings (${response.status})`;
+        throw new Error(detail);
+      }
+
       if (response.ok) {
         const requiresReindex = Boolean(data?.reindex_required);
         if (requiresReindex) {
@@ -750,6 +758,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Failed to save settings:', error);
+      throw error instanceof Error ? error : new Error(String(error));
     }
   };
 

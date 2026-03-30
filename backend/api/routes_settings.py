@@ -16,6 +16,7 @@ from core.runtime_config import (
     build_runtime_client,
     resolve_runtime_preferences,
 )
+from model_clients.registry import ClientRegistry
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 logger = logging.getLogger(__name__)
@@ -46,6 +47,104 @@ ALLOWED_KEYS = {
     "embedding_dimension",
     "top_k",
 }
+
+_API_KEY_ERROR_HINTS = (
+    "incorrect api key",
+    "invalid api key",
+    "api key not valid",
+    "unauthorized",
+    "authentication",
+    "permission denied",
+    "forbidden",
+    "401",
+    "403",
+)
+
+
+class _SnapshotSettingsStore:
+    def __init__(self, values: dict[str, Any]):
+        self._values = dict(values)
+
+    def get_all(self) -> dict[str, Any]:
+        return dict(self._values)
+
+
+def _resolve_runtime_preferences_for_update(
+    ctx: AppContext,
+    incoming_values: dict[str, Any],
+) -> dict[str, Any]:
+    persisted = ctx.settings_store.get_all() if ctx.settings_store is not None else {}
+    merged = dict(persisted or {})
+    merged.update(incoming_values)
+
+    snapshot_ctx = type("SnapshotCtx", (), {})()
+    snapshot_ctx.settings = ctx.settings
+    snapshot_ctx.settings_store = _SnapshotSettingsStore(merged)
+    return resolve_runtime_preferences(snapshot_ctx)
+
+
+def _is_invalid_api_key_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(hint in message for hint in _API_KEY_ERROR_HINTS)
+
+
+async def _validate_required_api_keys(
+    ctx: AppContext,
+    runtime_prefs: dict[str, Any],
+) -> None:
+    providers_to_validate: set[str] = set()
+
+    inference_backend = str(runtime_prefs.get("inference_backend") or "").strip()
+    embedding_backend = str(runtime_prefs.get("embedding_backend") or "").strip()
+    api_keys = runtime_prefs.get("api_keys") or {}
+
+    if inference_backend in {"api", "gemini"}:
+        providers_to_validate.add(inference_backend)
+    if embedding_backend in {"api", "gemini", "voyage"}:
+        providers_to_validate.add(embedding_backend)
+
+    provider_labels = {
+        "api": "OpenAI",
+        "gemini": "Google",
+        "voyage": "Voyage",
+    }
+
+    for provider in providers_to_validate:
+        api_key = api_keys.get(provider)
+        if not isinstance(api_key, str) or not api_key.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"{provider_labels.get(provider, provider)} API key is required "
+                    "for the selected model backend."
+                ),
+            )
+
+        try:
+            probe_client = ClientRegistry.get_client(
+                "embedding",
+                provider,
+                api_key=api_key.strip(),
+            )
+            await asyncio.to_thread(probe_client.embed_text, ["api key validation"])
+        except HTTPException:
+            raise
+        except Exception as exc:
+            if _is_invalid_api_key_error(exc):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{provider_labels.get(provider, provider)} API key is "
+                        "invalid. Please verify and try again."
+                    ),
+                ) from exc
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Could not validate {provider_labels.get(provider, provider)} "
+                    f"API key right now: {exc}"
+                ),
+            ) from exc
 
 
 def _build_embedding_probe_client(
@@ -292,6 +391,9 @@ async def update_settings(
     reindex_required = False
     filtered = {k: v for k, v in payload.items() if k in ALLOWED_KEYS}
     if filtered:
+        resolved_for_update = _resolve_runtime_preferences_for_update(ctx, filtered)
+        await _validate_required_api_keys(ctx, resolved_for_update)
+
         ctx.settings_store.set_many(filtered)
         if getattr(ctx, "db", None) is not None:
             resolved_prefs = resolve_runtime_preferences(ctx)

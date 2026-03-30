@@ -36,6 +36,8 @@ Use the Settings UI in the app to configure:
 4. Model Temperature & Context Size
 5. Retrieval Top-K Results
 
+**Recommended:** To quick start, generate a free Gemini API key [here](https://aistudio.google.com/app/apikey), and save it under the "Model Configuration" page.
+
 ![General Settings Page](assets/general_settings.png)
 ![Model Configuration Page](assets/model_configuration.png)
 ![Advanced Settings Page](assets/advanced_settings.png)

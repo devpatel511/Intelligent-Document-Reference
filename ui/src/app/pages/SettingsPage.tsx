@@ -216,7 +216,8 @@ export function SettingsPage() {
       await saveSettings();
       toast.success('Settings saved successfully!');
     } catch (error) {
-      toast.error(`Error saving settings: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Error saving settings: ${message}`);
     } finally {
       setIsSavingSettings(false);
     }
