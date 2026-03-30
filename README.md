@@ -5,7 +5,7 @@ Local-first RAG app for document ingestion and citation-grounded Q&A.
 - Backend: FastAPI
 - Frontend: React/Vite
 - Storage: SQLite + sqlite-vec
-
+- Supported File Extensions: [extension_registry.py](ingestion/extension_registry.py)
 
 
 
