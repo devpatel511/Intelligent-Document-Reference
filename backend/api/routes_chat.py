@@ -42,6 +42,14 @@ class QueryRequest(BaseModel):
     system_prompt: Optional[str] = None
 
 
+@router.post("/reset")
+async def reset_chat(ctx: AppContext = Depends(get_context)):
+    """Clear server-side chat history. Call when the UI starts a new conversation."""
+    if ctx.chat_history:
+        ctx.chat_history.clear()
+    return {"ok": True}
+
+
 @router.get("/status")
 async def status(ctx: AppContext = Depends(get_context)):
     """Health check: report whether the RAG pipeline is ready and how many files/chunks are indexed."""
