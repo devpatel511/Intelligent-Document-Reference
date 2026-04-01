@@ -41,8 +41,7 @@ Use the Settings UI in the app to configure:
 ![General Settings Page](assets/general_settings.png)
 ![Model Configuration Page](assets/model_configuration.png)
 ![Advanced Settings Page](assets/advanced_settings.png)
-
-Optionally, you may use an environment file to do this [.env.example](.env.example).
+Optionally, you may use an environment file to do this: [.env.example](.env.example)
 
 ---
 
