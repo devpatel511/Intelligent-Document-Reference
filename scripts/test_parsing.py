@@ -23,7 +23,8 @@ from ingestion import (  # noqa: E402
     get_input_handler,
     parse_and_prepare,
 )
-from ingestion.ocr import TesseractOCRProvider  # noqa: E402
+from ingestion.ocr import OCRProvider  # noqa: E402
+from model_clients.registry import ClientRegistry  # noqa: E402
 
 SAMPLE_FILES_DIR = PROJECT_ROOT / "ingestion" / "sample_files"
 
@@ -74,11 +75,33 @@ def main() -> int:
     config = IngestionConfig(ocr_enabled=args.ocr)
     ocr_provider = None
     if args.ocr:
+        # Try to create a model-backed OCR provider via available inference clients.
+        # This avoids requiring the pytesseract dependency for quick tests.
         try:
-            ocr_provider = TesseractOCRProvider()
-        except ImportError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
+            # Try local Ollama inference client first
+            client = ClientRegistry.get_client("inference", "local")
+            if hasattr(client, "describe_image"):
+
+                class ModelOCRProvider(OCRProvider):
+                    def extract_text(self, image, source_location=None):
+                        text = client.describe_image(image)
+                        return type(
+                            "R",
+                            (),
+                            {
+                                "text": text,
+                                "confidence": None,
+                                "source_location": source_location,
+                                "extraction_method": "vlm",
+                            },
+                        )()
+
+                ocr_provider = ModelOCRProvider()
+        except Exception:
+            print(
+                "Warning: model-backed OCR unavailable; proceeding without OCR.",
+                file=sys.stderr,
+            )
 
     if args.path:
         path = Path(args.path).resolve()

@@ -129,6 +129,7 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
             system_prompt=request.system_prompt,
             inference_backend=effective_backend,
             chat_history_context=chat_history_context,
+            runtime_prefs=runtime_prefs,
         )
         processing_time_ms = round((time.monotonic() - start_time) * 1000)
 

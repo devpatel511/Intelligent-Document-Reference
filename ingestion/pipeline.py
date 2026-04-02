@@ -66,35 +66,69 @@ _ocr_provider: Optional[Any] = None
 
 
 def _get_ocr_provider() -> Optional[Any]:
-    """Return a Tesseract OCR provider if OCR is enabled and available, else None."""
+    """Return an OCR provider when OCR is enabled.
+
+    Prefer a model-backed OCR provider (using inference_client.describe_image) so
+    projects can enable OCR without installing Tesseract. Falls back to None when
+    OCR is disabled or no describe_image is available.
+    """
     if os.getenv("OCR_ENABLED", "false").lower() in ("false", "0", "no"):
         return None
     global _ocr_provider
     if _ocr_provider is not None:
         return _ocr_provider if _ocr_provider is not False else None
-    try:
-        from ingestion.ocr import TesseractOCRProvider
 
-        _ocr_provider = TesseractOCRProvider()
-        logger.info(
-            "OCR (tesseract) loaded; image files (JPG, PNG, etc.) will be indexed."
-        )
-        return _ocr_provider
-    except ImportError as e:
-        _ocr_provider = False
-        logger.warning(
-            "OCR enabled but dependency missing (pytesseract/pillow not installed). "
-            "Image OCR will be skipped; VLM will be used for images if available. %s",
-            e,
-        )
-        return None
-    except OSError as e:
-        _ocr_provider = False
-        logger.warning(
-            "OCR enabled but tesseract binary not found. Image OCR will be skipped. %s",
-            e,
-        )
-        return None
+    # Try to use a locally configured inference client that supports describe_image
+    try:
+        # Lazy import to avoid circular imports
+        from backend.deps import get_context
+
+        # If running inside the app context, prefer that inference client
+        try:
+            ctx = get_context()
+            ic = getattr(ctx, "inference_client", None)
+        except Exception:
+            ic = None
+
+        if ic and getattr(ic, "describe_image", None):
+
+            class ModelOCRProvider:
+                def extract_text(self, image, source_location=None):
+                    try:
+                        return type(
+                            "R",
+                            (),
+                            {
+                                "text": ic.describe_image(image),
+                                "confidence": None,
+                                "source_location": source_location,
+                                "extraction_method": "vlm",
+                            },
+                        )()
+                    except Exception:
+                        return type(
+                            "R",
+                            (),
+                            {
+                                "text": "",
+                                "confidence": None,
+                                "source_location": source_location,
+                                "extraction_method": "vlm",
+                            },
+                        )()
+
+            _ocr_provider = ModelOCRProvider()
+            logger.info("OCR enabled via model-backed describe_image")
+            return _ocr_provider
+    except Exception:
+        pass
+
+    # No model-backed OCR available; don't error — just disable OCR gracefully
+    _ocr_provider = False
+    logger.warning(
+        "OCR enabled but no model-backed describe_image available; skipping OCR."
+    )
+    return None
 
 
 @dataclass
