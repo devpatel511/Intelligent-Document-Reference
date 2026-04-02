@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+_API_AUTH_ERROR_HINTS = (
+    "incorrect api key",
+    "invalid api key",
+    "api key not valid",
+    "unauthorized",
+    "authentication",
+    "permission denied",
+    "forbidden",
+    "invalid x-api-key",
+    "401",
+    "403",
+)
+
 
 class QueryRequest(BaseModel):
     query: str
@@ -161,6 +174,13 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
             detail = (
                 "Embedding/vector dimension mismatch detected. "
                 "Re-save embedding settings to auto-align dimension and then reindex."
+            )
+        elif any(hint in msg for hint in _API_AUTH_ERROR_HINTS):
+            status_code = 401
+            detail = (
+                "Model request failed authentication. Your API key appears invalid or "
+                "missing for the selected backend. Update it in Settings > Model Configuration and "
+                "save settings, then try again."
             )
         raise HTTPException(status_code=status_code, detail=detail)
 
