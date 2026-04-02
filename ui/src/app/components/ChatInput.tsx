@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { Send, Search, Sparkles } from 'lucide-react';
+import { Send, Search, Sparkles, Square } from 'lucide-react';
 
 export function ChatInput() {
   const {
@@ -17,6 +17,8 @@ export function ChatInput() {
     setSelectedModel,
     availableInferenceModels,
     sendMessage,
+    stopQuery,
+    isLoading,
     messages,
     indexedFiles,
     indexedDirectories,
@@ -34,19 +36,22 @@ export function ChatInput() {
   // Allow chatting if either the YAML config lists files/dirs OR the backend has indexed chunks
   const canChat = indexedFiles.length > 0 || indexedDirectories.length > 0 || (pipelineReady && indexedChunkCount > 0);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submitMessage = async () => {
+    if (isLoading || !input.trim()) return;
+    const message = input.trim();
+    setInput('');
+    await sendMessage(message);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim()) {
-      const message = input.trim();
-      setInput('');
-      await sendMessage(message);
-    }
+    void submitMessage();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      void submitMessage();
       return;
     }
 
@@ -113,10 +118,23 @@ export function ChatInput() {
 
           <div className="flex-1" />
 
-          <Button type="submit" size="sm" disabled={!input.trim()} className="cursor-pointer">
-            <Send className="h-4 w-4 mr-2" />
-            Send
-          </Button>
+          {isLoading ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => stopQuery()}
+            >
+              <Square className="h-3.5 w-3.5 mr-2 fill-current" />
+              Stop
+            </Button>
+          ) : (
+            <Button type="submit" size="sm" disabled={!input.trim()} className="cursor-pointer">
+              <Send className="h-4 w-4 mr-2" />
+              Send
+            </Button>
+          )}
         </div>
       </div>
 

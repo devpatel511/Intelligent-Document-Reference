@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useChatContext, Citation } from '@/app/contexts/ChatContext';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
-import { User, Bot, FileText, ArrowDown, Copy, Check } from 'lucide-react';
+import { User, Bot, FileText, ArrowDown, Copy, Check, Square } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { format } from 'date-fns';
 import { Button } from '@/app/components/ui/button';
@@ -42,7 +42,7 @@ function confidenceMeta(score: number): { label: string; note: string; className
 }
 
 export function ChatMessages() {
-  const { messages, isLoading, openPath } = useChatContext();
+  const { messages, isLoading, openPath, stopQuery } = useChatContext();
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   const handleOpenPath = useCallback(
@@ -293,8 +293,18 @@ export function ChatMessages() {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 space-y-2 max-w-[80%]">
-                <div className="rounded-xl px-4 py-3 assistant-canvas bg-card border border-border/80 shadow-sm">
+                <div className="rounded-xl px-4 py-3 assistant-canvas bg-card border border-border/80 shadow-sm flex items-center justify-between gap-3">
                   <p className="text-sm text-muted-foreground">Thinking...</p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="shrink-0 cursor-pointer"
+                    onClick={() => stopQuery()}
+                  >
+                    <Square className="h-3 w-3 mr-1.5 fill-current" />
+                    Stop
+                  </Button>
                 </div>
               </div>
             </div>

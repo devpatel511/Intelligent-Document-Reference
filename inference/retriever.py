@@ -6,6 +6,8 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
+from ingestion.extension_registry import IMAGE_FILE_EXTENSIONS
+
 logger = logging.getLogger(__name__)
 
 
@@ -167,7 +169,7 @@ class Retriever:
         if overlap > 0:
             score += min(0.20, 0.05 * overlap)
 
-        image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+        image_exts = IMAGE_FILE_EXTENSIONS
         image_terms = {"image", "photo", "picture", "screenshot", "diagram", "png"}
         if ext in image_exts and any(t in query_terms for t in image_terms):
             score += 0.15
