@@ -153,7 +153,8 @@ def resolve_runtime_preferences(ctx) -> Dict[str, Any]:
         # Minimum characters for an acceptable response before attempting a retry.
         "local_min_answer_chars": int(
             persisted.get(
-                "local_min_answer_chars", getattr(ctx.settings, "local_min_answer_chars", 200)
+                "local_min_answer_chars",
+                getattr(ctx.settings, "local_min_answer_chars", 200),
             )
         ),
         "ollama_url": ollama_url,

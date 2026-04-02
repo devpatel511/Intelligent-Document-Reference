@@ -63,7 +63,7 @@ class Responder:
         context_size: Optional[int] = None,
         system_prompt: Optional[str] = None,
         inference_backend: Optional[str] = None,
-    runtime_prefs: Optional[dict] = None,
+        runtime_prefs: Optional[dict] = None,
     ) -> Dict[str, Any]:
         """Run the full retrieve-then-generate pipeline."""
         file_ids: Optional[List[int]] = None
@@ -90,7 +90,9 @@ class Responder:
         except Exception:
             pass
 
-        logger.info("Retrieving top-%d chunks for query: %s", effective_top_k, query[:80])
+        logger.info(
+            "Retrieving top-%d chunks for query: %s", effective_top_k, query[:80]
+        )
         chunks = await self.retriever.retrieve(
             query,
             top_k=effective_top_k,
@@ -121,7 +123,11 @@ class Responder:
             # Cap requested context to the model's max context tokens when available
             model_max_ctx = None
             try:
-                model_max_ctx = int(runtime_prefs.get("model_max_context_tokens")) if runtime_prefs else None
+                model_max_ctx = (
+                    int(runtime_prefs.get("model_max_context_tokens"))
+                    if runtime_prefs
+                    else None
+                )
             except Exception:
                 model_max_ctx = None
             if model_max_ctx and model_max_ctx > 0:
@@ -147,8 +153,13 @@ class Responder:
                 else:
                     generate_kwargs.setdefault("num_ctx", effective_ctx)
                     # Allow runtime preferences to control max output tokens for local models
-                    if runtime_prefs and isinstance(runtime_prefs.get("local_max_output_tokens"), int):
-                        generate_kwargs.setdefault("num_predict", int(runtime_prefs.get("local_max_output_tokens")))
+                    if runtime_prefs and isinstance(
+                        runtime_prefs.get("local_max_output_tokens"), int
+                    ):
+                        generate_kwargs.setdefault(
+                            "num_predict",
+                            int(runtime_prefs.get("local_max_output_tokens")),
+                        )
                     else:
                         generate_kwargs.setdefault("num_predict", 384)
                     generate_kwargs.setdefault("keep_alive", "30m")
@@ -207,7 +218,9 @@ class Responder:
                 retry_kwargs["num_predict"] = current_num_predict
                 retry_kwargs["temperature"] = current_temp
 
-                raw_answer = await self.rag.generate_response(query, chunks, **retry_kwargs)
+                raw_answer = await self.rag.generate_response(
+                    query, chunks, **retry_kwargs
+                )
                 stripped = _strip_inline_source_markers(raw_answer)
                 if stripped:
                     answer = stripped
@@ -218,7 +231,10 @@ class Responder:
 
             # If still empty after retries, provide a deterministic fallback so frontend doesn't show blank.
             if not answer:
-                logger.warning("Model returned empty output for query after retries: %s", query[:120])
+                logger.warning(
+                    "Model returned empty output for query after retries: %s",
+                    query[:120],
+                )
                 answer = (
                     "The local model did not produce any text for this input after several attempts. "
                     "Try a different model, increase local resources, or shorten the prompt/context."
