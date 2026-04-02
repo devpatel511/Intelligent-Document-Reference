@@ -187,7 +187,7 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
         elif any(hint in msg for hint in _API_AUTH_ERROR_HINTS):
             status_code = 401
             detail = (
-                "Model request failed authentication. Your API key appears invalid or "
+                "Model request failed. Either you were rate limited or your API key appears invalid/"
                 "missing for the selected backend. Update it in Settings > Model Configuration and "
                 "save settings, then try again."
             )

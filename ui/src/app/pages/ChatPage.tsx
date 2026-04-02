@@ -109,7 +109,7 @@ export function ChatPage() {
           <div className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-amber-900 flex items-center justify-between gap-2">
             <p className="text-sm">
               Reindex required: {outdatedFileCount > 0 ? `${outdatedFileCount} file${outdatedFileCount === 1 ? '' : 's'} outdated.` : 'vectors outdated.'}{' '}
-              Go to Settings/File Indexing and run save/indexing to rebuild embeddings.
+              Go to Settings/File Indexing and run <span className="font-semibold">Reindex</span> to rebuild embeddings.
             </p>
             <button
               onClick={() => setBannerDismissed(true)}
