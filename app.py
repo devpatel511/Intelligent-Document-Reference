@@ -379,8 +379,19 @@ def setup_environment():
     print("=" * 60)
 
 
+# NOTE: Benchmarking helpers are intentionally hidden from the regular CLI help.
+# They are experimental developer utilities used to verify model performance and
+# end-to-end benchmarking across datasets. Running the benchmark suite can
+# consume significant quota and requires a high-tier API key to exercise all
+# datasets successfully. Keep these options hidden from normal users by using
+# argparse.SUPPRESS on the corresponding CLI flags below.
 def _run_benchmark(args) -> None:
-    """Load benchmark config, bootstrap the app, and run the evaluation suite."""
+    """Load benchmark config, bootstrap the app, and run the evaluation suite.
+
+    Hidden/experimental: this function powers the `--benchmark` CLI flag and
+    related options. Only use for profiling and evaluation; high-tier API keys
+    (with generous rate/usage limits) are recommended to run the full suite.
+    """
     import asyncio
 
     import yaml
@@ -721,74 +732,65 @@ def main():
         const="default",
         choices=["default", "local", "api", "gemini"],
         default=None,
-        help=(
-            "Run benchmark suite. Optional value selects backend preset for both "
-            "embedding and inference: default|local|api|gemini."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--embed",
         type=str,
         default=None,
-        help="Override embedding model id for benchmark runs.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--model",
         type=str,
         default=None,
-        help="Override inference model id for benchmark runs.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--vlm",
         type=str,
         default=None,
-        help=(
-            "Optional dedicated vision-language model for ingestion image-to-text "
-            "during benchmark runs (separate from --model)."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--benchmark-config",
         type=str,
         default=None,
-        help="Path to benchmark YAML config (default: benchmarks/default_benchmark.yaml).",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--benchmark-dataset",
         type=str,
         default=None,
-        help="Override the dataset path in the benchmark config.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--benchmark-dataset-id",
         type=str,
         default=None,
-        help=(
-            "Run benchmark against a single dataset folder and matching prompts "
-            "(e.g. 13 or dataset13)."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--benchmark-output",
         type=str,
         default=None,
-        help="Override the output directory for benchmark results.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--benchmark-runs",
         type=int,
         default=None,
-        help="Override the number of runs per query.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--no-graphs",
         action="store_true",
-        help="Skip graph generation during benchmarking.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--skip-indexing",
         action="store_true",
-        help="Skip dataset indexing and run queries against existing index.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--electron",

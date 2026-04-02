@@ -32,7 +32,7 @@ from ingestion.models import (
     estimate_tokens,
     file_metadata_from_path,
 )
-from ingestion.ocr import OCRProvider, OCRResult, TesseractOCRProvider
+from ingestion.ocr import OCRProvider, OCRResult
 from ingestion.orchestrator import parse_and_prepare, parse_and_prepare_batch
 from ingestion.parser import (
     AudioInput,
@@ -76,7 +76,6 @@ __all__ = [
     "DOCXInput",
     "OCRProvider",
     "OCRResult",
-    "TesseractOCRProvider",
     "StructuredDocument",
     "ContentBlock",
     "BlockMetadata",
