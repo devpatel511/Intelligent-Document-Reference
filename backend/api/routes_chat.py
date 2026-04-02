@@ -112,7 +112,6 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
             context_size=request.context_size,
             system_prompt=request.system_prompt,
             inference_backend=effective_backend,
-            runtime_prefs=runtime_prefs,
         )
         processing_time_ms = round((time.monotonic() - start_time) * 1000)
     except Exception:
