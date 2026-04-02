@@ -272,6 +272,33 @@ class OllamaClient(EmbeddingClient, InferenceClient):
             if key in option_keys:
                 options[key] = kwargs.pop(key)
 
+        # Set sensible defaults to speed up local inference by using available
+        # CPU/GPU resources. These can be overridden by passing explicit kwargs.
+        try:
+            cpu_count = os.cpu_count() or 1
+            default_threads = max(1, cpu_count - 1)
+        except Exception:
+            default_threads = 1
+        try:
+            default_gpus = int(os.getenv("OLLAMA_NUM_GPU", "0"))
+        except Exception:
+            default_gpus = 0
+
+        options.setdefault("num_thread", default_threads)
+        options.setdefault("num_gpu", default_gpus)
+
+        # Some Ollama/server versions expect different names for the max
+        # number of tokens to predict. Propagate num_predict into common
+        # alternate keys so various backends accept the limit.
+        num_predict = options.get("num_predict")
+        if isinstance(num_predict, int) and num_predict > 0:
+            # Top-level aliases
+            kwargs.setdefault("max_tokens", num_predict)
+            kwargs.setdefault("max_new_tokens", num_predict)
+            kwargs.setdefault("n_predict", num_predict)
+            # Also include inside the options dict for older endpoints.
+            options.setdefault("max_tokens", num_predict)
+
         payload = {
             "model": kwargs.pop("model", self.chat_model),
             "prompt": prompt,
@@ -280,12 +307,31 @@ class OllamaClient(EmbeddingClient, InferenceClient):
             "options": options,
             **kwargs,
         }
+
+        start = time.time()
         resp = self._get_client().post(
             f"{self.url}/api/generate",
             json=payload,
         )
         resp.raise_for_status()
-        return resp.json()["response"]
+        j = resp.json()
+        duration = (time.time() - start) * 1000.0
+        logger.debug("Ollama generate request took %.1fms", duration)
+        resp_text = (j.get("response") or "").strip()
+
+        # Log a short diagnostic when response is shorter than requested tokens.
+        try:
+            if isinstance(num_predict, int) and num_predict > 0:
+                # We don't have an exact token->char mapping; just log lengths.
+                logger.debug(
+                    "Ollama generate: requested num_predict=%d, response_len=%d",
+                    num_predict,
+                    len(resp_text),
+                )
+        except Exception:
+            pass
+
+        return resp_text
 
     # ── Vision / Image Description ──────────────────────────────
 
