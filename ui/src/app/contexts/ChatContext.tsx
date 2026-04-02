@@ -74,6 +74,10 @@ interface ChatContextType {
   systemPrompt: string;
   darkMode: boolean;
   sendMessage: (content: string) => Promise<void>;
+  /** Abort the in-flight /chat/query request (no assistant message appended). */
+  stopQuery: () => void;
+  /** Clear the conversation, cancel any in-flight query, and reset server chat memory. */
+  newChat: () => Promise<void>;
   setInferenceMode: (mode: InferenceMode) => void;
   setSelectedModel: (model: ModelType) => void;
   toggleFileSelection: (path: string) => void;
@@ -239,6 +243,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
   const embeddingDimsInFlightRef = useRef(new Map<string, Promise<number[]>>());
   const embeddingDimsLastFetchRef = useRef(new Map<string, number>());
+  const chatQueryAbortRef = useRef<AbortController | null>(null);
+
+  type ChatQueryAbortReason = 'user_stop' | 'supersede' | 'new_chat';
+  const markChatAbortReason = (controller: AbortController, reason: ChatQueryAbortReason) => {
+    (controller as AbortController & { chatAbortReason?: ChatQueryAbortReason }).chatAbortReason =
+      reason;
+  };
+  const getChatAbortReason = (controller: AbortController): ChatQueryAbortReason | undefined => {
+    return (controller as AbortController & { chatAbortReason?: ChatQueryAbortReason })
+      .chatAbortReason;
+  };
+
   // Check pipeline readiness from backend
   const checkPipelineStatus = async () => {
     try {
@@ -1001,6 +1017,33 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const stopQuery = () => {
+    const ac = chatQueryAbortRef.current;
+    if (ac) {
+      markChatAbortReason(ac, 'user_stop');
+      ac.abort();
+    }
+  };
+
+  const newChat = async () => {
+    const ac = chatQueryAbortRef.current;
+    if (ac) {
+      markChatAbortReason(ac, 'new_chat');
+      ac.abort();
+    }
+    chatQueryAbortRef.current = null;
+    setMessages([]);
+    setIsLoading(false);
+    try {
+      const res = await fetch(`${API_BASE_URL}/chat/reset`, { method: 'POST' });
+      if (!res.ok) {
+        console.warn('Chat reset failed:', res.status);
+      }
+    } catch (e) {
+      console.warn('Failed to reset server chat history:', e);
+    }
+  };
+
   const sendMessage = async (content: string) => {
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
@@ -1009,8 +1052,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       timestamp: new Date(),
     };
 
+    const prev = chatQueryAbortRef.current;
+    if (prev) {
+      markChatAbortReason(prev, 'supersede');
+      prev.abort();
+    }
+    const ac = new AbortController();
+    chatQueryAbortRef.current = ac;
+
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+
+    const isAbortError = (e: unknown) =>
+      (e instanceof DOMException && e.name === 'AbortError') ||
+      (e instanceof Error && e.name === 'AbortError');
 
     try {
       const response = await fetch(`${API_BASE_URL}/chat/query`, {
@@ -1018,6 +1073,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: ac.signal,
         body: JSON.stringify({
           query: content,
           model: selectedModel,
@@ -1037,7 +1093,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await response.json();
-      
+
       const assistantMessage: Message = {
         id: `msg-${Date.now() + 1}`,
         role: 'assistant',
@@ -1051,6 +1107,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
+      if (isAbortError(error)) {
+        if (getChatAbortReason(ac) === 'user_stop') {
+          const stoppedMessage: Message = {
+            id: `msg-${Date.now()}`,
+            role: 'assistant',
+            content: 'Stopped.',
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, stoppedMessage]);
+        }
+        return;
+      }
       console.error('Failed to send message:', error);
       const detail = error instanceof Error ? error.message : 'Unknown error';
       const errorMessage: Message = {
@@ -1061,7 +1129,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      if (chatQueryAbortRef.current === ac) {
+        chatQueryAbortRef.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
@@ -1211,6 +1282,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         systemPrompt,
         darkMode,
         sendMessage,
+        stopQuery,
+        newChat,
         setInferenceMode,
         setSelectedModel,
         toggleFileSelection,
