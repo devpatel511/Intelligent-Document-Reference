@@ -49,6 +49,32 @@ def _resolve_api_keys(raw: Dict[str, Any]) -> Dict[str, Optional[str]]:
     }
 
 
+def _model_max_context_tokens(model_name: str | None) -> int:
+    """Return an estimated maximum context size (in tokens) for common models.
+
+    This is a conservative mapping used to cap requested context sizes so the
+    backend won't ask the model for more context than it supports. Unknown
+    models default to a large budget (32768) which most modern large models
+    can handle or the local server will cap.
+    """
+    if not model_name:
+        return 32768
+    name = model_name.lower()
+    # Heuristics for common models
+    if "qwen" in name:
+        return 32768
+    if "llama3" in name:
+        return 16384
+    if "llama2" in name or "llama" in name:
+        return 8192
+    if "gpt-4" in name or "gpt4" in name or "gpt-4o" in name:
+        return 32768
+    if "gemini" in name:
+        return 32768
+    # Default conservative fallback
+    return 32768
+
+
 def resolve_runtime_preferences(ctx) -> Dict[str, Any]:
     """Resolve runtime model/backend preferences from persisted settings + defaults."""
     persisted: Dict[str, Any] = {}
@@ -108,7 +134,32 @@ def resolve_runtime_preferences(ctx) -> Dict[str, Any]:
         "inference_model": inference_model,
         "embedding_model": embedding_model,
         "embedding_dimension": embedding_dimension,
+        # Max output tokens to request from local inference backends (num_predict).
+        # Default to a very large token count so local models are asked for the
+        # maximum they can produce; the local server/model will cap if needed.
+        "local_max_output_tokens": int(
+            persisted.get(
+                "local_max_output_tokens",
+                getattr(ctx.settings, "local_max_output_tokens", 32768),
+            )
+        ),
+        # How many extra generation attempts to make when local model output
+        # is unexpectedly short. A value of 1 means one retry (two total attempts).
+        "local_retry_attempts": int(
+            persisted.get(
+                "local_retry_attempts", getattr(ctx.settings, "local_retry_attempts", 1)
+            )
+        ),
+        # Minimum characters for an acceptable response before attempting a retry.
+        "local_min_answer_chars": int(
+            persisted.get(
+                "local_min_answer_chars", getattr(ctx.settings, "local_min_answer_chars", 200)
+            )
+        ),
         "ollama_url": ollama_url,
+        # Estimated per-model maximum context in tokens. Used to cap requested
+        # context sizes so we don't exceed the model/server limits.
+        "model_max_context_tokens": _model_max_context_tokens(inference_model),
         "api_keys": api_keys,
     }
 

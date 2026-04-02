@@ -63,6 +63,7 @@ class Responder:
         context_size: Optional[int] = None,
         system_prompt: Optional[str] = None,
         inference_backend: Optional[str] = None,
+    runtime_prefs: Optional[dict] = None,
     ) -> Dict[str, Any]:
         """Run the full retrieve-then-generate pipeline."""
         file_ids: Optional[List[int]] = None
@@ -71,10 +72,28 @@ class Responder:
             if not file_ids:
                 file_ids = []
 
-        logger.info("Retrieving top-%d chunks for query: %s", top_k, query[:80])
+        # Determine effective model name from request or runtime prefs so we can
+        # apply model-specific performance defaults (e.g., for Qwen3).
+        effective_model = None
+        if model:
+            effective_model = model
+        elif runtime_prefs and isinstance(runtime_prefs.get("inference_model"), str):
+            effective_model = runtime_prefs.get("inference_model")
+        effective_model_l = (effective_model or "").lower()
+
+        # For certain models (Qwen3 family) prefer fewer retrieved chunks to
+        # reduce prompt size and latency.
+        effective_top_k = top_k
+        try:
+            if "qwen" in effective_model_l and "3" in effective_model_l:
+                effective_top_k = min(top_k, 3)
+        except Exception:
+            pass
+
+        logger.info("Retrieving top-%d chunks for query: %s", effective_top_k, query[:80])
         chunks = await self.retriever.retrieve(
             query,
-            top_k=top_k,
+            top_k=effective_top_k,
             folder_id=folder_id,
             file_ids=file_ids,
             selected_file_paths=selected_files,
@@ -97,18 +116,113 @@ class Responder:
             generate_kwargs["system_prompt"] = system_prompt
 
         if (inference_backend or "").lower() == "local":
-            effective_ctx = context_size or 4096
-            generate_kwargs.setdefault("num_ctx", effective_ctx)
-            generate_kwargs.setdefault("num_predict", 384)
-            generate_kwargs.setdefault("keep_alive", "30m")
-            generate_kwargs.setdefault(
-                "max_context_chars",
-                max(6000, min(effective_ctx * 3, 24000)),
-            )
-            generate_kwargs.setdefault("max_chunk_chars", 1800)
+            # Default context size; allow request override via context_size.
+            requested_ctx = context_size or 4096
+            # Cap requested context to the model's max context tokens when available
+            model_max_ctx = None
+            try:
+                model_max_ctx = int(runtime_prefs.get("model_max_context_tokens")) if runtime_prefs else None
+            except Exception:
+                model_max_ctx = None
+            if model_max_ctx and model_max_ctx > 0:
+                effective_ctx = min(requested_ctx, model_max_ctx)
+            else:
+                effective_ctx = requested_ctx
 
-        answer = await self.rag.generate_response(query, chunks, **generate_kwargs)
-        answer = _strip_inline_source_markers(answer)
+            # If this appears to be a Qwen3 model, tighten defaults to speed up
+            # inference: smaller context, fewer chunks, and smaller output.
+            try:
+                if "qwen" in effective_model_l and "3" in effective_model_l:
+                    # target fast inference: smaller context and output budget
+                    effective_ctx = min(effective_ctx, 2048)
+                    generate_kwargs.setdefault("num_ctx", effective_ctx)
+                    # Prefer a shorter output by default for Qwen3 to hit <20s
+                    generate_kwargs.setdefault("num_predict", 256)
+                    generate_kwargs.setdefault("max_chunk_chars", 1000)
+                    generate_kwargs.setdefault("keep_alive", "10m")
+                    generate_kwargs.setdefault(
+                        "max_context_chars",
+                        max(3000, min(effective_ctx * 2, 12000)),
+                    )
+                else:
+                    generate_kwargs.setdefault("num_ctx", effective_ctx)
+                    # Allow runtime preferences to control max output tokens for local models
+                    if runtime_prefs and isinstance(runtime_prefs.get("local_max_output_tokens"), int):
+                        generate_kwargs.setdefault("num_predict", int(runtime_prefs.get("local_max_output_tokens")))
+                    else:
+                        generate_kwargs.setdefault("num_predict", 384)
+                    generate_kwargs.setdefault("keep_alive", "30m")
+                    generate_kwargs.setdefault(
+                        "max_context_chars",
+                        max(6000, min(effective_ctx * 3, 24000)),
+                    )
+                    generate_kwargs.setdefault("max_chunk_chars", 1800)
+            except Exception:
+                # Fallback to sane defaults on any error
+                generate_kwargs.setdefault("num_ctx", effective_ctx)
+                generate_kwargs.setdefault("num_predict", 384)
+                generate_kwargs.setdefault("keep_alive", "30m")
+                generate_kwargs.setdefault(
+                    "max_context_chars",
+                    max(6000, min(effective_ctx * 3, 24000)),
+                )
+                generate_kwargs.setdefault("max_chunk_chars", 1800)
+        # Generate raw output from the client (may contain inline source markers).
+        raw_answer = await self.rag.generate_response(query, chunks, **generate_kwargs)
+        # Strip inline markers for the displayed answer.
+        answer = _strip_inline_source_markers(raw_answer)
+
+        # If stripping removed all content, but the raw answer had something, fall back to raw.
+        if not answer and raw_answer:
+            logger.debug("Stripped answer empty; falling back to raw model output")
+            answer = raw_answer.strip()
+
+        # If still short/empty, optionally retry with increased tokens/adjusted temp.
+        if (inference_backend or "").lower() == "local":
+            tries = 0
+            max_retries = 0
+            min_chars = 0
+            if runtime_prefs:
+                max_retries = int(runtime_prefs.get("local_retry_attempts", 0))
+                min_chars = int(runtime_prefs.get("local_min_answer_chars", 200))
+
+            current_num_predict = int(generate_kwargs.get("num_predict", 384))
+            current_temp = float(generate_kwargs.get("temperature", 0.7))
+
+            while (not answer or len(answer) < min_chars) and tries < max_retries:
+                tries += 1
+                # Increase requested tokens by 2x each retry (capped reasonably)
+                current_num_predict = min(current_num_predict * 2, 65536)
+                # Slightly reduce temperature to make output more deterministic on retry
+                current_temp = max(0.0, current_temp * 0.8)
+                logger.info(
+                    "Retrying local generation (try %d/%d): num_predict=%d, temperature=%.2f",
+                    tries,
+                    max_retries,
+                    current_num_predict,
+                    current_temp,
+                )
+
+                retry_kwargs = dict(generate_kwargs)
+                retry_kwargs["num_predict"] = current_num_predict
+                retry_kwargs["temperature"] = current_temp
+
+                raw_answer = await self.rag.generate_response(query, chunks, **retry_kwargs)
+                stripped = _strip_inline_source_markers(raw_answer)
+                if stripped:
+                    answer = stripped
+                    break
+                if raw_answer:
+                    answer = raw_answer.strip()
+                    break
+
+            # If still empty after retries, provide a deterministic fallback so frontend doesn't show blank.
+            if not answer:
+                logger.warning("Model returned empty output for query after retries: %s", query[:120])
+                answer = (
+                    "The local model did not produce any text for this input after several attempts. "
+                    "Try a different model, increase local resources, or shorten the prompt/context."
+                )
         citations = format_citations(chunks, max_items=3, query=query)
 
         return {
