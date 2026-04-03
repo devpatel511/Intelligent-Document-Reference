@@ -168,7 +168,7 @@ async def query(request: QueryRequest, ctx: AppContext = Depends(get_context)):
 
     except Exception:
         logger.exception("RAG pipeline error")
-        detail = "Error processing query"
+        detail = "Error processing query. Make sure you have a valid backend model and/or API key set."
         status_code = 500
         msg = ""
         try:
