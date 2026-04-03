@@ -216,7 +216,8 @@ export function SettingsPage() {
       await saveSettings();
       toast.success('Settings saved successfully!');
     } catch (error) {
-      toast.error(`Error saving settings: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`Error saving settings: ${message}`);
     } finally {
       setIsSavingSettings(false);
     }
@@ -421,8 +422,9 @@ export function SettingsPage() {
             <p className="text-sm font-medium">Reindex required after embedding configuration change</p>
             <p className="text-xs mt-1">
               {outdatedFileCount > 0
-                ? `${outdatedFileCount} file${outdatedFileCount === 1 ? '' : 's'} marked outdated. Run reindexing to rebuild vectors.`
-                : 'Some vectors are outdated. Run reindexing to rebuild vectors.'}
+              ? `${outdatedFileCount} file${outdatedFileCount === 1 ? '' : 's'} marked outdated. `
+              : 'Some vectors are outdated. '}
+              Run <span className="font-semibold">Reindex</span> to rebuild vectors.
             </p>
           </div>
         )}

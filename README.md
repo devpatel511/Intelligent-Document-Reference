@@ -5,7 +5,7 @@ Local-first RAG app for document ingestion and citation-grounded Q&A.
 - Backend: FastAPI
 - Frontend: React/Vite
 - Storage: SQLite + sqlite-vec
-
+- Supported File Extensions: [extension_registry.py](ingestion/extension_registry.py)
 
 
 
@@ -27,6 +27,8 @@ uv run app.py
 
 Default app URL: http://127.0.0.1:8000
 
+**Recommended:** Generate a free Gemini API key [here](https://aistudio.google.com/app/apikey), and save it under the "Model Configuration" page.
+
 ## Configuration (UI First)
 
 Use the Settings UI in the app to configure:
@@ -39,8 +41,7 @@ Use the Settings UI in the app to configure:
 ![General Settings Page](assets/general_settings.png)
 ![Model Configuration Page](assets/model_configuration.png)
 ![Advanced Settings Page](assets/advanced_settings.png)
-
-Optionally, you may use an environment file to do this [.env.example](.env.example).
+Optionally, you may use an environment file to do this: [.env.example](.env.example)
 
 ---
 

@@ -1,15 +1,21 @@
 """Retrieval wrapper with file-scoped hybrid ranking."""
 
 import asyncio
+import logging
 import os
 import re
 from typing import Any, Dict, List, Optional
 
+from ingestion.extension_registry import IMAGE_FILE_EXTENSIONS
+
+logger = logging.getLogger(__name__)
+
 
 class Retriever:
-    def __init__(self, db: Any, embedding_client: Any):
+    def __init__(self, db: Any, embedding_client: Any, cache: Optional[Any] = None):
         self.db = db
         self.embedder = embedding_client
+        self.cache = cache  # RetrievalCache instance (optional)
 
     async def retrieve(
         self,
@@ -32,14 +38,27 @@ class Retriever:
             List of chunk dicts with text_content, file_path, distance.
         """
         query_vec = await asyncio.to_thread(self.embedder.embed_text, [query])
+        query_embedding = query_vec[0]
 
         if file_ids is not None and len(file_ids) == 0:
             return []
 
+        # Check cache for semantic similarity hit (if cache enabled and no file restrictions)
+        if (
+            self.cache
+            and folder_id is None
+            and file_ids is None
+            and selected_file_paths is None
+        ):
+            cached_chunks = self.cache.lookup(query_embedding)
+            if cached_chunks:
+                logger.debug(f"Retrieval cache hit for query: '{query[:50]}...'")
+                return cached_chunks[:top_k]
+
         fetch_k = max(top_k * 4, top_k)
         vector_results = await asyncio.to_thread(
             self.db.search_with_metadata,
-            query_vec[0],
+            query_embedding,
             limit=fetch_k,
             file_id=folder_id,
             file_ids=file_ids,
@@ -60,7 +79,18 @@ class Retriever:
             lexical_results=lexical_results,
             selected_file_paths=selected_file_paths,
         )
-        return ranked[:top_k]
+        result = ranked[:top_k]
+
+        # Add to cache for future similar queries
+        if (
+            self.cache
+            and folder_id is None
+            and file_ids is None
+            and selected_file_paths is None
+        ):
+            self.cache.add(query, query_embedding, result)
+
+        return result
 
     def _hybrid_rank(
         self,
@@ -139,7 +169,7 @@ class Retriever:
         if overlap > 0:
             score += min(0.20, 0.05 * overlap)
 
-        image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+        image_exts = IMAGE_FILE_EXTENSIONS
         image_terms = {"image", "photo", "picture", "screenshot", "diagram", "png"}
         if ext in image_exts and any(t in query_terms for t in image_terms):
             score += 0.15

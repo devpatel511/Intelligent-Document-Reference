@@ -5,7 +5,15 @@ import { ChatMessages } from '@/app/components/ChatMessages';
 import { ChatInput } from '@/app/components/ChatInput';
 import { useChatContext } from '@/app/contexts/ChatContext';
 import { Button } from '@/app/components/ui/button';
-import { Settings, PanelLeftClose, PanelLeft, Minimize2, Maximize2, X } from 'lucide-react';
+import {
+  Settings,
+  PanelLeftClose,
+  PanelLeft,
+  Minimize2,
+  Maximize2,
+  X,
+  MessageSquarePlus,
+} from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
 export function ChatPage() {
@@ -13,7 +21,7 @@ export function ChatPage() {
   const [composerCollapsed, setComposerCollapsed] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const navigate = useNavigate();
-  const { reindexRequired, outdatedFileCount } = useChatContext();
+  const { reindexRequired, outdatedFileCount, newChat } = useChatContext();
 
   return (
     <div className="flex h-screen bg-background">
@@ -74,22 +82,34 @@ export function ChatPage() {
             )}
             <h1 className="text-lg font-semibold">RAG Chatbot</h1>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate('/settings')}
-            className="cursor-pointer"
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Settings
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => newChat()}
+              className="cursor-pointer"
+              title="Clear messages and start over"
+            >
+              <MessageSquarePlus className="h-4 w-4 mr-2" />
+              New chat
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/settings')}
+              className="cursor-pointer"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Settings
+            </Button>
+          </div>
         </div>
 
         {reindexRequired && !bannerDismissed && (
           <div className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-amber-900 flex items-center justify-between gap-2">
             <p className="text-sm">
               Reindex required: {outdatedFileCount > 0 ? `${outdatedFileCount} file${outdatedFileCount === 1 ? '' : 's'} outdated.` : 'vectors outdated.'}{' '}
-              Go to Settings/File Indexing and run save/indexing to rebuild embeddings.
+              Go to Settings/File Indexing and run <span className="font-semibold">Reindex</span> to rebuild embeddings.
             </p>
             <button
               onClick={() => setBannerDismissed(true)}

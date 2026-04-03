@@ -1,10 +1,12 @@
 """Bootstrap subsystem initializers and return AppContext."""
 
+from backend.chat_memory import ChatHistory
 from config.settings import load_settings
 from core.context import AppContext
 from core.runtime_config import apply_runtime_clients
 from db import UnifiedDatabase
 from db.settings_store import SettingsStore
+from inference.retrieval_cache import RetrievalCache
 from jobs import JobQueue, Scheduler
 from watcher import FileRegistry, FileTrackingService
 
@@ -26,6 +28,12 @@ def bootstrap() -> AppContext:
         db_path=settings.unified_db_path,
         vector_dimension=vector_dimension,
     )
+
+    # Initialize retrieval cache and chat history
+    ctx.retrieval_cache = RetrievalCache(
+        db=ctx.db, max_size=100, similarity_threshold=0.1
+    )
+    ctx.chat_history = ChatHistory(window_size=5)
 
     job_queue = JobQueue(db_path=settings.unified_db_path)
     ctx.job_queue = job_queue

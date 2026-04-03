@@ -20,6 +20,10 @@ from ingestion.config import IngestionConfig
 from ingestion.crawler import DiscoveredFile, crawl_directory
 from ingestion.dedup import remove_near_duplicates_dicts
 from ingestion.embedding_adapter import embed_texts_batched
+from ingestion.extension_registry import (
+    SUPPORTED_FILE_EXTENSIONS,
+    is_supported_path,
+)
 from ingestion.models import BlockType, ContentBlock, FileMetadata, StructuredDocument
 from ingestion.orchestrator import parse_and_prepare
 from ingestion.parser import (
@@ -66,35 +70,69 @@ _ocr_provider: Optional[Any] = None
 
 
 def _get_ocr_provider() -> Optional[Any]:
-    """Return a Tesseract OCR provider if OCR is enabled and available, else None."""
+    """Return an OCR provider when OCR is enabled.
+
+    Prefer a model-backed OCR provider (using inference_client.describe_image) so
+    projects can enable OCR without installing Tesseract. Falls back to None when
+    OCR is disabled or no describe_image is available.
+    """
     if os.getenv("OCR_ENABLED", "false").lower() in ("false", "0", "no"):
         return None
     global _ocr_provider
     if _ocr_provider is not None:
         return _ocr_provider if _ocr_provider is not False else None
-    try:
-        from ingestion.ocr import TesseractOCRProvider
 
-        _ocr_provider = TesseractOCRProvider()
-        logger.info(
-            "OCR (tesseract) loaded; image files (JPG, PNG, etc.) will be indexed."
-        )
-        return _ocr_provider
-    except ImportError as e:
-        _ocr_provider = False
-        logger.warning(
-            "OCR enabled but dependency missing (pytesseract/pillow not installed). "
-            "Image OCR will be skipped; VLM will be used for images if available. %s",
-            e,
-        )
-        return None
-    except OSError as e:
-        _ocr_provider = False
-        logger.warning(
-            "OCR enabled but tesseract binary not found. Image OCR will be skipped. %s",
-            e,
-        )
-        return None
+    # Try to use a locally configured inference client that supports describe_image
+    try:
+        # Lazy import to avoid circular imports
+        from backend.deps import get_context
+
+        # If running inside the app context, prefer that inference client
+        try:
+            ctx = get_context()
+            ic = getattr(ctx, "inference_client", None)
+        except Exception:
+            ic = None
+
+        if ic and getattr(ic, "describe_image", None):
+
+            class ModelOCRProvider:
+                def extract_text(self, image, source_location=None):
+                    try:
+                        return type(
+                            "R",
+                            (),
+                            {
+                                "text": ic.describe_image(image),
+                                "confidence": None,
+                                "source_location": source_location,
+                                "extraction_method": "vlm",
+                            },
+                        )()
+                    except Exception:
+                        return type(
+                            "R",
+                            (),
+                            {
+                                "text": "",
+                                "confidence": None,
+                                "source_location": source_location,
+                                "extraction_method": "vlm",
+                            },
+                        )()
+
+            _ocr_provider = ModelOCRProvider()
+            logger.info("OCR enabled via model-backed describe_image")
+            return _ocr_provider
+    except Exception:
+        pass
+
+    # No model-backed OCR available; don't error — just disable OCR gracefully
+    _ocr_provider = False
+    logger.warning(
+        "OCR enabled but no model-backed describe_image available; skipping OCR."
+    )
+    return None
 
 
 @dataclass
@@ -185,71 +223,7 @@ class PipelineConfig:
     min_content_word_ratio: float = 0.35
 
     # Crawler (when input is directory)
-    # Must stay in sync with parser.CODE_FILE_EXTENSIONS + IMAGE_FILE_EXTENSIONS + AUDIO_FILE_EXTENSIONS (+ .pdf, .txt, .md, .rst)
-    supported_extensions: tuple[str, ...] = (
-        # Documents
-        ".pdf",
-        ".txt",
-        ".md",
-        ".rst",
-        # Code / config
-        ".py",
-        ".js",
-        ".mjs",
-        ".cjs",
-        ".ts",
-        ".tsx",
-        ".jsx",
-        ".java",
-        ".kt",
-        ".go",
-        ".rs",
-        ".rb",
-        ".php",
-        ".swift",
-        ".c",
-        ".cpp",
-        ".h",
-        ".hpp",
-        ".cs",
-        ".scala",
-        ".r",
-        ".sql",
-        ".sh",
-        ".bash",
-        ".yaml",
-        ".yml",
-        ".json",
-        ".toml",
-        ".ini",
-        ".cfg",
-        ".html",
-        ".css",
-        ".scss",
-        ".vue",
-        ".svelte",
-        # Images
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".bmp",
-        ".tiff",
-        ".tif",
-        ".webp",
-        # Audio
-        ".mp3",
-        ".wav",
-        ".m4a",
-        ".aac",
-        ".flac",
-        ".ogg",
-        ".oga",
-        ".opus",
-        ".webm",
-        ".aiff",
-        ".aif",
-    )
+    supported_extensions: tuple[str, ...] = SUPPORTED_FILE_EXTENSIONS
     exclude_patterns: tuple[str, ...] = (
         "**/node_modules/**",
         "**/.git/**",
@@ -342,6 +316,12 @@ def _modality_for_ext(ext: str) -> str:
         return "pdf"
     if ext in (".txt", ".md", ".rst"):
         return "text"
+    if ext == ".csv":
+        return "csv"
+    if ext in (".xlsx", ".xls"):
+        return "spreadsheet"
+    if ext == ".docx":
+        return "docx"
     if ext in IMAGE_FILE_EXTENSIONS:
         return "image"
     if ext in AUDIO_FILE_EXTENSIONS:
@@ -646,11 +626,11 @@ def run(
     if files_override is not None:
         file_iter = files_override
     elif root.is_file():
-        ext = root.suffix.lower()
-        if ext not in cfg.supported_extensions:
+        if not is_supported_path(root, cfg.supported_extensions):
             return IngestionOutput(
                 chunks=[], files_processed=0, chunks_generated=0, chunks_after_dedup=0
             )
+        ext = root.suffix.lower()
         try:
             st = root.stat()
             file_iter = [
@@ -861,9 +841,9 @@ def run_index(path: str, strategy: Optional[ReindexStrategy] = None, ctx=None) -
     )
     p = Path(path).resolve()
     if p.is_file():
-        ext = p.suffix.lower()
-        if ext not in config.supported_extensions:
+        if not is_supported_path(p, config.supported_extensions):
             return
+        ext = p.suffix.lower()
 
         if strategy == ReindexStrategy.SKIP:
             logger.info("Skipping indexing for %s: no changes detected", path)

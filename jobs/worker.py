@@ -101,6 +101,8 @@ class Worker:
                     await asyncio.to_thread(
                         transition_state, self._queue, job.id, "completed"
                     )
+                    if self._ctx:
+                        self._ctx.dirty = True
                     logger.info("Job %d completed successfully", job.id)
 
                 except Exception as exc:

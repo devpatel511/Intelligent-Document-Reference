@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+from ingestion.extension_registry import SUPPORTED_FILE_EXTENSIONS, is_supported_path
+
 
 @dataclass
 class DiscoveredFile:
@@ -45,30 +47,7 @@ def _matches_exclude(path: Path, patterns: tuple[str, ...], root: Path) -> bool:
 def crawl_directory(
     root: Path,
     *,
-    supported_extensions: tuple[str, ...] = (
-        ".pdf",
-        ".txt",
-        ".md",
-        ".mp3",
-        ".wav",
-        ".m4a",
-        ".aac",
-        ".flac",
-        ".ogg",
-        ".oga",
-        ".opus",
-        ".webm",
-        ".aiff",
-        ".aif",
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".bmp",
-        ".tiff",
-        ".tif",
-        ".webp",
-    ),
+    supported_extensions: tuple[str, ...] = SUPPORTED_FILE_EXTENSIONS,
     exclude_patterns: tuple[str, ...] = (
         "**/node_modules/**",
         "**/.git/**",
@@ -83,7 +62,7 @@ def crawl_directory(
     max_bytes = int(max_file_size_mb * 1024 * 1024)
 
     for path in root.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in ext_set:
+        if not path.is_file() or not is_supported_path(path, ext_set):
             continue
         if _matches_exclude(path, exclude_patterns, root):
             continue

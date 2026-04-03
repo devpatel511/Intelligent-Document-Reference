@@ -15,6 +15,12 @@ from ingestion.chunking import (
 )
 from ingestion.config import IngestionConfig
 from ingestion.crawler import DiscoveredFile, crawl_directory
+from ingestion.extension_registry import (
+    EXTENSIONLESS_TEXT_FILENAMES,
+    SUPPORTED_FILE_EXTENSIONS,
+    is_extensionless_text_filename,
+    is_supported_path,
+)
 from ingestion.models import (
     BlockMetadata,
     BlockType,
@@ -26,15 +32,18 @@ from ingestion.models import (
     estimate_tokens,
     file_metadata_from_path,
 )
-from ingestion.ocr import OCRProvider, OCRResult, TesseractOCRProvider
+from ingestion.ocr import OCRProvider, OCRResult
 from ingestion.orchestrator import parse_and_prepare, parse_and_prepare_batch
 from ingestion.parser import (
     AudioInput,
     CodeInput,
+    CSVInput,
+    DOCXInput,
     ImageInput,
     InputDocument,
     InputSource,
     PDFInput,
+    SpreadsheetInput,
     TextInput,
     get_input_handler,
 )
@@ -62,9 +71,11 @@ __all__ = [
     "AudioInput",
     "TextInput",
     "CodeInput",
+    "CSVInput",
+    "SpreadsheetInput",
+    "DOCXInput",
     "OCRProvider",
     "OCRResult",
-    "TesseractOCRProvider",
     "StructuredDocument",
     "ContentBlock",
     "BlockMetadata",
@@ -87,4 +98,8 @@ __all__ = [
     "run_index",
     "DiscoveredFile",
     "crawl_directory",
+    "SUPPORTED_FILE_EXTENSIONS",
+    "EXTENSIONLESS_TEXT_FILENAMES",
+    "is_extensionless_text_filename",
+    "is_supported_path",
 ]
