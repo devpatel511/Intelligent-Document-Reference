@@ -1,3 +1,5 @@
+[![CI](https://github.com/devpatel511/Intelligent-Document-Reference/actions/workflows/ci.yml/badge.svg)](https://github.com/devpatel511/Intelligent-Document-Reference/actions/workflows/ci.yml)
+
 # Intelligent Document Reference
 
 Local-first RAG app for document ingestion and citation-grounded Q&A.
