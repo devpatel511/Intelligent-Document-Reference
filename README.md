@@ -9,13 +9,28 @@ Local-first RAG app for document ingestion and citation-grounded Q&A.
 - Storage: SQLite + sqlite-vec
 - Supported File Extensions: [extension_registry.py](ingestion/extension_registry.py)
 
-
-
 https://github.com/user-attachments/assets/0f393843-5a50-45bc-98cb-ad8d31f009bb
 
+---
 
+# Presented @ [AI Tinkerers - Toronto](https://toronto.aitinkerers.org/connect/mu_fRg4AytYGFs/presenters)
 
+### Presenter Badge
+<img src="https://github.com/devpatel511/Intelligent-Document-Reference/blob/main/assets/AITinkerersPresenterBadge.jpg" width="33%">
 
+### Project Presentation Intro
+https://github.com/user-attachments/assets/ae004147-e954-4eee-ab21-d32c30ec6a8a
+
+### Project Showcase with the Team
+![Science Fair](assets/IMG_0392.JPG)
+
+### Discussing Project with Mozilla CTO & AI Tinkerers Crew
+![Microsoft CTO](assets/IMG_0397.JPG)
+
+### Final Team Photo
+![Team Photo](assets/IMG_2474.JPG)
+
+---
 
 ## Quick Start (Production)
 
